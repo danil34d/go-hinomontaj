@@ -1,0 +1,41 @@
+# Бинарные файлы
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+
+# Файлы базы данных
+*.db
+*.sqlite
+*.sqlite3
+
+# Логи
+*.log
+
+# Временные файлы
+*.tmp
+*.temp
+
+# Файлы IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Файлы операционной системы
+.DS_Store
+Thumbs.db
+
+# Файлы сборки
+bin/
+dist/
+
+# Файлы зависимостей
+vendor/
+node_modules/
+
+# Локальные конфигурации
+.env
+.env.local
+config.local.json 

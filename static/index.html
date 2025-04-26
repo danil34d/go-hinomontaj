@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <title>Создание заказа</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* ... existing styles ... */
+        
+        .services-summary {
+            cursor: pointer;
+            color: #2a8cff;
+            text-decoration: underline;
+            padding: 5px;
+            line-height: 1.5;
+        }
+        
+        .services-summary:hover {
+            background-color: #f0f7ff;
+            border-radius: 4px;
+        }
+        
+        .services-details {
+            background-color: #f8fafc;
+            border: 1px solid #e3e7ed;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 10px;
+        }
+        
+        .wheel-services {
+            margin-bottom: 10px;
+        }
+        
+        .wheel-services:last-child {
+            margin-bottom: 0;
+        }
+        
+        .wheel-services strong {
+            color: #2a3b4c;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .wheel-services ul {
+            list-style-type: none;
+            padding-left: 15px;
+            margin: 0;
+        }
+        
+        .wheel-services li {
+            color: #666;
+            margin-bottom: 3px;
+        }
+        
+        .wheel-services li:last-child {
+            margin-bottom: 0;
+        }
+        
+        .vehicle-details {
+            margin-bottom: 15px;
+        }
+        
+        .vehicle-details h3 {
+            color: #2a3b4c;
+            margin: 0 0 10px 0;
+            font-size: 16px;
+        }
+        
+        .axis-details {
+            margin-left: 15px;
+            margin-bottom: 10px;
+        }
+        
+        .axis-details h4 {
+            color: #2a3b4c;
+            margin: 0 0 8px 0;
+            font-size: 14px;
+        }
+        
+        .wheel-details {
+            margin-left: 15px;
+            margin-bottom: 8px;
+        }
+        
+        .wheel-details strong {
+            color: #2a3b4c;
+            display: block;
+            margin-bottom: 5px;
+        }
+        
+        .wheel-details ul {
+            list-style-type: none;
+            padding-left: 15px;
+            margin: 0;
+        }
+        
+        .wheel-details li {
+            color: #666;
+            margin-bottom: 3px;
+            font-size: 13px;
+        }
+        
+        .wheel-details li:last-child {
+            margin-bottom: 0;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Рабочее место сотрудника</h1>
+        <button id="createOrderBtn">Создать заказ</button>
+
+        <div id="priceList">
+            <h3>Прайс (нал)</h3>
+            <ul id="priceUl"></ul>
+        </div>
+
+        <form id="orderForm">
+            <div class="form-section">
+                <label>
+                    Номер тягача:
+                    <input type="text" id="tractor_number" placeholder="А777МР77" maxlength="9" pattern="[АВЕКМНОРСТУХ]{1}\d{3}[АВЕКМНОРСТУХ]{2}\d{2,3}" autocomplete="off">
+                    <span class="hint">Формат: А777МР77 или А777МР777</span>
+                    <span class="hint">Допустимые буквы: А, В, Е, К, М, Н, О, Р, С, Т, У, Х</span>
+                </label>
+                <label>
+                    Номер прицепа:
+                    <input type="text" id="trailer_number" placeholder="АВ123477" maxlength="9" pattern="[АВЕКМНОРСТУХ]{2}\d{4}\d{2,3}" autocomplete="off">
+                    <span class="hint">Формат: АВ123477 или АВ1234777</span>
+                    <span class="hint">Допустимые буквы: А, В, Е, К, М, Н, О, Р, С, Т, У, Х</span>
+                </label>
+                <label>
+                    Оплата/Компания:
+                    <select id="payment_method">
+                        <option value="нал">Нал</option>
+                        <option value="агрегатор">Агрегатор (ДС)</option>
+                        <option value="контрагент">Контрагент</option>
+                    </select>
+                </label>
+            </div>
+            <div class="form-section">
+                <div style="text-align:center; margin-bottom:5px;">
+                    <span style="font-size:22px; color:#2a8cff;">↑</span>
+                    <div style="font-size:13px; color:#888;">Движение вперёд</div>
+                </div>
+                <div style="text-align:center; margin-bottom:10px; font-weight:bold;">Тягач (вид сверху)</div>
+                <!-- Передняя ось -->
+                <div style="display:flex; justify-content:center; align-items:center; margin-bottom:8px;">
+                    <div class="wheel-img" data-type="tractor" data-wheel="Передняя ось: левое"></div>
+                    <span class="wheel-label">левое</span>
+                    <span style="font-size:18px; color:#888; margin:0 10px;">|</span>
+                    <div class="wheel-img" data-type="tractor" data-wheel="Передняя ось: правое"></div>
+                    <span class="wheel-label">правое</span>
+                </div>
+                <!-- Задняя ось -->
+                <div style="display:flex; justify-content:center; align-items:center;">
+                    <div class="wheel-img" data-type="tractor" data-wheel="Задняя ось: внешнее левое"></div>
+                    <div class="wheel-img" data-type="tractor" data-wheel="Задняя ось: внутреннее левое"></div>
+                    <span style="font-size:18px; color:#888; margin:0 10px;">|</span>
+                    <div class="wheel-img" data-type="tractor" data-wheel="Задняя ось: внутреннее правое"></div>
+                    <div class="wheel-img" data-type="tractor" data-wheel="Задняя ось: внешнее правое"></div>
+                </div>
+                <div style="text-align:center; color:#888; margin-top:8px;">Лево | Право</div>
+            </div>
+            <div class="form-section">
+                <div style="text-align:center; margin-bottom:5px;">
+                    <span style="font-size:22px; color:#2a8cff;">↑</span>
+                    <div style="font-size:13px; color:#888;">Движение вперёд</div>
+                </div>
+                <div style="text-align:center; margin-bottom:10px; font-weight:bold;">Полуприцеп (вид сверху)</div>
+                <!-- Ось 1 -->
+                <div style="display:flex; justify-content:center; align-items:center; margin-bottom:8px;">
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 1: внешнее левое"></div>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 1: внутреннее левое"></div>
+                    <span style="font-size:18px; color:#888; margin:0 10px;">|</span>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 1: внутреннее правое"></div>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 1: внешнее правое"></div>
+                </div>
+                <!-- Ось 2 -->
+                <div style="display:flex; justify-content:center; align-items:center; margin-bottom:8px;">
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 2: внешнее левое"></div>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 2: внутреннее левое"></div>
+                    <span style="font-size:18px; color:#888; margin:0 10px;">|</span>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 2: внутреннее правое"></div>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 2: внешнее правое"></div>
+                </div>
+                <!-- Ось 3 -->
+                <div style="display:flex; justify-content:center; align-items:center;">
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 3: внешнее левое"></div>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 3: внутреннее левое"></div>
+                    <span style="font-size:18px; color:#888; margin:0 10px;">|</span>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 3: внутреннее правое"></div>
+                    <div class="wheel-img" data-type="trailer" data-wheel="Ось 3: внешнее правое"></div>
+                </div>
+                <div style="text-align:center; color:#888; margin-top:8px;">Лево | Право</div>
+            </div>
+            <div id="servicesBlock" class="form-section"></div>
+            <button type="submit" class="btn">Сохранить заказ</button>
+            <button type="button" id="cancelBtn" class="btn btn-cancel">Отмена</button>
+        </form>
+        <div id="orderMessage"></div>
+
+        <div class="form-section" style="margin-top:30px;">
+            <h2>Список заказов</h2>
+            <button id="refreshOrdersBtn" class="btn" style="margin-bottom:10px;">Обновить</button>
+            <div style="max-height:340px; overflow-y:auto; border-radius:6px; border:1px solid #e3e7ed;">
+                <table id="ordersTable" style="width:100%; border-collapse:collapse;">
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Номер ТС</th>
+                            <th>Клиент</th>
+                            <th>Услуга</th>
+                            <th>Оплата</th>
+                            <th>Тип клиента</th>
+                            <th>Дата</th>
+                        </tr>
+                    </thead>
+                    <tbody></tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+    <script>
+        // --- Услуги (пример, можно расширить) ---
+        let serviceOptions = [
+            "Снятие колеса с автомобиля 19.5 - 22.5",
+            "Установка колеса на автомобиль 19.5 - 22.5",
+            "Снятие сдвоенных колес с автомобиля 19.5 - 22.5",
+            "Установка сдвоенных колес на автомобиль 19.5 - 22.5",
+            "Демонтаж, снятие шины с диска 19.5 - 22.5",
+            "Монтаж, установка шины на диск 19.5 - 22.5",
+            "Балансировка колеса 17.5-24 дюйма (включая грузики)",
+            "Установка заплаты тип 1",
+            "Установка грибка, диаметр до 10 мм (Российск.)"
+        ];
+
+        // Маппинг позиций колес на понятные названия
+        const wheelNames = {
+            // Тягач
+            'Передняя ось: левое': 'Тягач: Водительское колесо',
+            'Передняя ось: правое': 'Тягач: Пассажирское колесо',
+            'Задняя ось: внешнее левое': 'Тягач: Заднее внешнее левое',
+            'Задняя ось: внутреннее левое': 'Тягач: Заднее внутреннее левое',
+            'Задняя ось: внутреннее правое': 'Тягач: Заднее внутреннее правое',
+            'Задняя ось: внешнее правое': 'Тягач: Заднее внешнее правое',
+            
+            // Прицеп
+            'Ось 1: внешнее левое': 'Прицеп: Ось 1 внешнее левое',
+            'Ось 1: внутреннее левое': 'Прицеп: Ось 1 внутреннее левое',
+            'Ось 1: внутреннее правое': 'Прицеп: Ось 1 внутреннее правое',
+            'Ось 1: внешнее правое': 'Прицеп: Ось 1 внешнее правое',
+            'Ось 2: внешнее левое': 'Прицеп: Ось 2 внешнее левое',
+            'Ось 2: внутреннее левое': 'Прицеп: Ось 2 внутреннее левое',
+            'Ось 2: внутреннее правое': 'Прицеп: Ось 2 внутреннее правое',
+            'Ось 2: внешнее правое': 'Прицеп: Ось 2 внешнее правое',
+            'Ось 3: внешнее левое': 'Прицеп: Ось 3 внешнее левое',
+            'Ось 3: внутреннее левое': 'Прицеп: Ось 3 внутреннее левое',
+            'Ось 3: внутреннее правое': 'Прицеп: Ось 3 внутреннее правое',
+            'Ось 3: внешнее правое': 'Прицеп: Ось 3 внешнее правое'
+        };
+
+        // Функция для проверки доступности услуги для колеса
+        function isServiceAvailableForWheel(service, wheelName) {
+            // Для передних колес недоступны услуги по сдвоенным колесам
+            if (wheelName.includes('Водительское') || wheelName.includes('Пассажирское')) {
+                return !service.includes('сдвоенных');
+            }
+            return true;
+        }
+
+        // --- Динамическая подгрузка прайса ---
+        let priceMap = {};
+        async function loadPrice(file) {
+            try {
+                const response = await fetch('/api/services');
+                if (!response.ok) {
+                    throw new Error('Ошибка загрузки услуг');
+                }
+                const services = await response.json();
+                
+                priceMap = {};
+                services.forEach(service => {
+                    priceMap[service.name] = file === '/static/price_ds.json' ? 
+                        service.price_company : service.price_individual;
+                });
+
+                const ul = document.getElementById('priceUl');
+                ul.innerHTML = '';
+                for (const [service, price] of Object.entries(priceMap)) {
+                    const li = document.createElement('li');
+                    li.textContent = service + ' — ' + price + ' руб.';
+                    ul.appendChild(li);
+                }
+                serviceOptions = Object.keys(priceMap);
+                renderServiceSelectors();
+            } catch (error) {
+                console.error('Ошибка загрузки услуг:', error);
+            }
+        }
+
+        // Загружаем услуги при старте
+        loadPrice('/static/price.json');
+        
+        document.getElementById('payment_method').onchange = function() {
+            if (this.value === 'агрегатор') {
+                loadPrice('/static/price_ds.json');
+                document.querySelector('#priceList h3').innerText = 'Прайс (ДС)';
+            } else {
+                loadPrice('/static/price.json');
+                document.querySelector('#priceList h3').innerText = 'Прайс (нал)';
+            }
+        };
+
+        // --- Выбор колёс мышкой ---
+        function getSelectedWheels() {
+            return Array.from(document.querySelectorAll('.wheel-img.selected')).map(div => ({
+                type: div.getAttribute('data-type'),
+                name: div.getAttribute('data-wheel')
+            }));
+        }
+        document.addEventListener('DOMContentLoaded', function() {
+            document.querySelectorAll('.wheel-img').forEach(div => {
+                div.onclick = function() {
+                    div.classList.toggle('selected');
+                    renderServiceSelectors();
+                };
+            });
+        });
+
+        // --- Рендеринг выбора услуг для выбранных колёс ---
+        function renderServiceSelectors() {
+            const checkedWheels = getSelectedWheels();
+            const block = document.getElementById('servicesBlock');
+            block.innerHTML = '';
+            if (checkedWheels.length === 0) {
+                block.innerHTML = '<span style="color:#888;">Сначала выберите колёса для работы</span>';
+                return;
+            }
+            checkedWheels.forEach(wheel => {
+                const wheelName = wheelNames[wheel.name] || wheel.name;
+                const div = document.createElement('div');
+                div.className = 'services-for-wheel';
+                div.innerHTML = `<b>${wheelName}</b><br>`;
+                
+                // Фильтруем услуги в зависимости от типа колеса
+                const availableServices = serviceOptions.filter(service => 
+                    isServiceAvailableForWheel(service, wheelName)
+                );
+                
+                availableServices.forEach(service => {
+                    const checkboxName = `service_${wheel.type}_${wheel.name}`;
+                    div.innerHTML += `<label class="service-checkbox"><input type="checkbox" name="${checkboxName}" value="${service}"> ${service} <span style="color:green;">${priceMap[service] ? priceMap[service] + ' руб.' : ''}</span></label><br>`;
+                });
+                block.appendChild(div);
+            });
+        }
+
+        // --- Валидация номеров ТС ---
+        function formatVehicleNumber(number) {
+            // Преобразуем все буквы в заглавные
+            number = number.toUpperCase();
+            // Удаляем все пробелы
+            number = number.replace(/\s/g, '');
+            return number;
+        }
+
+        function validateVehicleNumber(number, type) {
+            // Преобразуем номер в правильный формат
+            number = formatVehicleNumber(number);
+            
+            // Паттерн для российских номеров
+            const russianLetters = 'АВЕКМНОРСТУХ';
+            const tractorPattern = new RegExp(`^[${russianLetters}]{1}\\d{3}[${russianLetters}]{2}\\d{2,3}$`);
+            const trailerPattern = new RegExp(`^[${russianLetters}]{2}\\d{4}\\d{2,3}$`);
+            
+            if (type === 'tractor') {
+                return tractorPattern.test(number);
+            } else {
+                return trailerPattern.test(number);
+            }
+        }
+
+        // --- Обработка ввода номера ---
+        document.getElementById('tractor_number').addEventListener('input', function(e) {
+            // Преобразуем введенный текст в правильный формат
+            this.value = formatVehicleNumber(this.value);
+        });
+
+        document.getElementById('trailer_number').addEventListener('input', function(e) {
+            // Преобразуем введенный текст в правильный формат
+            this.value = formatVehicleNumber(this.value);
+        });
+
+        // --- Кнопки и отправка формы ---
+        document.getElementById('createOrderBtn').onclick = function() {
+            document.getElementById('orderForm').style.display = 'block';
+            this.style.display = 'none';
+        };
+        document.getElementById('cancelBtn').onclick = function() {
+            document.getElementById('orderForm').style.display = 'none';
+            document.getElementById('createOrderBtn').style.display = 'inline';
+            document.getElementById('orderMessage').innerText = '';
+        };
+
+        // --- Обработка отправки формы ---
+        document.getElementById('orderForm').onsubmit = async function(e) {
+            e.preventDefault();
+            
+            // Собираем данные формы
+            const tractorNumber = document.getElementById('tractor_number').value;
+            const trailerNumber = document.getElementById('trailer_number').value;
+            const paymentMethod = document.getElementById('payment_method').value;
+            const clientType = paymentMethod === 'нал' ? 'individual' : 'company';
+            
+            // Валидация номеров
+            if (!validateVehicleNumber(tractorNumber, 'tractor')) {
+                alert('Неверный формат номера тягача. Пример: А777МР77');
+                return;
+            }
+            
+            if (trailerNumber && !validateVehicleNumber(trailerNumber, 'trailer')) {
+                alert('Неверный формат номера прицепа. Пример: АВ123477');
+                return;
+            }
+
+            // Собираем выбранные услуги
+            const services = [];
+            const checkedWheels = getSelectedWheels();
+            if (checkedWheels.length === 0) {
+                alert('Выберите хотя бы одно колесо');
+                return;
+            }
+
+            for (const wheel of checkedWheels) {
+                const checkboxes = document.querySelectorAll(`input[name="service_${wheel.type}_${wheel.name}"]:checked`);
+                if (checkboxes.length === 0) {
+                    alert(`Выберите хотя бы одну услугу для ${wheel.name}`);
+                    return;
+                }
+
+                for (const checkbox of checkboxes) {
+                    services.push({
+                        service_type: checkbox.value,
+                        wheel_position: wheel.name
+                    });
+                }
+            }
+
+            try {
+                const response = await fetch('/api/orders', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        vehicle_number: tractorNumber + (trailerNumber ? '/' + trailerNumber : ''),
+                        payment_method: paymentMethod,
+                        client_type: clientType,
+                        services: services
+                    })
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || 'Ошибка при сохранении заказа');
+                }
+
+                document.getElementById('orderMessage').innerText = 'Заказ успешно сохранен!';
+                document.getElementById('orderMessage').style.color = 'green';
+                
+                // Скрываем форму и показываем кнопку создания
+                document.getElementById('orderForm').style.display = 'none';
+                document.getElementById('createOrderBtn').style.display = 'inline';
+                
+                // Обновляем список заказов
+                loadOrders();
+                
+                // Очищаем форму
+                document.getElementById('tractor_number').value = '';
+                document.getElementById('trailer_number').value = '';
+                document.querySelectorAll('.wheel-img.selected').forEach(el => el.classList.remove('selected'));
+                renderServiceSelectors();
+            } catch (error) {
+                document.getElementById('orderMessage').innerText = error.message;
+                document.getElementById('orderMessage').style.color = 'red';
+            }
+        };
+
+        // --- Загрузка списка заказов ---
+        async function loadOrders() {
+            try {
+                const response = await fetch('/api/orders');
+                const result = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(result.error || 'Ошибка при загрузке заказов');
+                }
+                
+                const tbody = document.querySelector('#ordersTable tbody');
+                tbody.innerHTML = '';
+                
+                result.forEach(order => {
+                    const row = document.createElement('tr');
+                    
+                    // Группируем услуги по типам ТС и осям
+                    const servicesByVehicle = {
+                        'Тягач': {
+                            'Передняя ось': [],
+                            'Задняя ось': []
+                        },
+                        'Прицеп': {
+                            'Ось 1': [],
+                            'Ось 2': [],
+                            'Ось 3': []
+                        }
+                    };
+
+                    // Распределяем услуги по соответствующим группам
+                    order.services.forEach(service => {
+                        const wheelName = wheelNames[service.wheel_position] || service.wheel_position;
+                        const [vehicleType, wheelInfo] = wheelName.split(':').map(s => s.trim());
+                        
+                        if (vehicleType === 'Тягач') {
+                            if (wheelInfo.includes('Водительское') || wheelInfo.includes('Пассажирское')) {
+                                servicesByVehicle['Тягач']['Передняя ось'].push({
+                                    wheel: wheelInfo,
+                                    service: service.service_name
+                                });
+                            } else {
+                                servicesByVehicle['Тягач']['Задняя ось'].push({
+                                    wheel: wheelInfo,
+                                    service: service.service_name
+                                });
+                            }
+                        } else if (vehicleType === 'Прицеп') {
+                            const axisMatch = wheelInfo.match(/Ось (\d+)/);
+                            if (axisMatch) {
+                                const axisNum = axisMatch[1];
+                                servicesByVehicle['Прицеп'][`Ось ${axisNum}`].push({
+                                    wheel: wheelInfo,
+                                    service: service.service_name
+                                });
+                            }
+                        }
+                    });
+
+                    // Формируем краткое описание
+                    const summary = [];
+                    for (const [vehicleType, axes] of Object.entries(servicesByVehicle)) {
+                        const vehicleSummary = [];
+                        for (const [axis, services] of Object.entries(axes)) {
+                            if (services.length > 0) {
+                                const wheelCount = new Set(services.map(s => s.wheel)).size;
+                                vehicleSummary.push(`${axis}: ${wheelCount} колес (${services.length} услуг)`);
+                            }
+                        }
+                        if (vehicleSummary.length > 0) {
+                            summary.push(`${vehicleType}: ${vehicleSummary.join(', ')}`);
+                        }
+                    }
+
+                    // Формируем детальное описание
+                    const details = [];
+                    for (const [vehicleType, axes] of Object.entries(servicesByVehicle)) {
+                        const vehicleDetails = [];
+                        for (const [axis, services] of Object.entries(axes)) {
+                            if (services.length > 0) {
+                                const servicesByWheel = {};
+                                services.forEach(s => {
+                                    if (!servicesByWheel[s.wheel]) {
+                                        servicesByWheel[s.wheel] = [];
+                                    }
+                                    servicesByWheel[s.wheel].push(s.service);
+                                });
+
+                                const axisDetails = Object.entries(servicesByWheel)
+                                    .map(([wheel, wheelServices]) => `
+                                        <div class="wheel-details">
+                                            <strong>${wheel}</strong>
+                                            <ul>
+                                                ${wheelServices.map(service => `<li>${service}</li>`).join('')}
+                                            </ul>
+                                        </div>
+                                    `).join('');
+
+                                vehicleDetails.push(`
+                                    <div class="axis-details">
+                                        <h4>${axis}</h4>
+                                        ${axisDetails}
+                                    </div>
+                                `);
+                            }
+                        }
+                        if (vehicleDetails.length > 0) {
+                            details.push(`
+                                <div class="vehicle-details">
+                                    <h3>${vehicleType}</h3>
+                                    ${vehicleDetails.join('')}
+                                </div>
+                            `);
+                        }
+                    }
+
+                    row.innerHTML = `
+                        <td>${order.id}</td>
+                        <td>${order.vehicle_number}</td>
+                        <td>${order.client_type === 'individual' ? 'Физ. лицо' : 'Юр. лицо'}</td>
+                        <td>
+                            <div class="services-summary" onclick="toggleServices(this)">
+                                ${summary.join('<br>')}
+                            </div>
+                            <div class="services-details" style="display:none;">
+                                ${details.join('')}
+                            </div>
+                        </td>
+                        <td>${order.payment_method}</td>
+                        <td>${order.client_type === 'individual' ? 'Физ. лицо' : 'Юр. лицо'}</td>
+                        <td>${new Date(order.created_at).toLocaleString()}</td>
+                    `;
+                    tbody.appendChild(row);
+                });
+            } catch (error) {
+                console.error('Ошибка при загрузке заказов:', error);
+                const tbody = document.querySelector('#ordersTable tbody');
+                tbody.innerHTML = `<tr><td colspan="7" style="color:red;">${error.message}</td></tr>`;
+            }
+        }
+
+        // Функция для переключения отображения деталей услуг
+        function toggleServices(element) {
+            const details = element.nextElementSibling;
+            if (details.style.display === 'none') {
+                details.style.display = 'block';
+                element.style.cursor = 'pointer';
+            } else {
+                details.style.display = 'none';
+            }
+        }
+
+        // Загружаем заказы при загрузке страницы
+        document.addEventListener('DOMContentLoaded', loadOrders);
+        
+        // Обработчик кнопки обновления
+        document.getElementById('refreshOrdersBtn').onclick = loadOrders;
+    </script>
+</body>
+</html>
