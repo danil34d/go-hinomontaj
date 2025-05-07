@@ -1,0 +1,16 @@
+port: "8080"
+
+db:
+  host: "localhost"
+  port: "5432"
+  username: "postgres"
+  password: "postgres"
+  dbname: "hinomontaj"
+  sslmode: "disable"
+
+auth:
+  signing_key: "qrkjk#4#%35FSFJlja#4353KSFjH"
+  token_ttl: "12h"
+
+migrations:
+  path: "migrations/goose" 
