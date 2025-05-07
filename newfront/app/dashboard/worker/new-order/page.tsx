@@ -22,8 +22,10 @@ export default function NewOrderPage() {
   const [formData, setFormData] = useState({
     client_id: "",
     service_id: "",
+    vehicle_number: "",
+    payment_method: "cash",
     description: "",
-    total_price: "",
+    total_amount: "",
     status: "new",
   })
 
@@ -68,7 +70,7 @@ export default function NewOrderPage() {
         ...formData,
         client_id: Number.parseInt(formData.client_id),
         service_id: Number.parseInt(formData.service_id),
-        total_price: Number.parseFloat(formData.total_price),
+        total_amount: Number.parseFloat(formData.total_amount),
       }
 
       await ordersApi.create(orderData)
@@ -78,7 +80,7 @@ export default function NewOrderPage() {
         description: "Заказ успешно создан",
       })
 
-      router.push("/dashboard/worker/orders")
+      router.push("/dashboard/worker")
     } catch (error) {
       toast({
         variant: "destructive",
@@ -151,6 +153,38 @@ export default function NewOrderPage() {
             </div>
           </div>
 
+          <div className="grid gap-6 md:grid-cols-2">
+            <div className="space-y-2">
+              <Label htmlFor="vehicle_number">Номер автомобиля</Label>
+              <Input
+                id="vehicle_number"
+                name="vehicle_number"
+                placeholder="А123БВ777"
+                value={formData.vehicle_number}
+                onChange={handleChange}
+                required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label htmlFor="payment_method">Способ оплаты</Label>
+              <Select
+                value={formData.payment_method}
+                onValueChange={(value) => handleSelectChange("payment_method", value)}
+                required
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите способ оплаты" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="cash">Наличные</SelectItem>
+                  <SelectItem value="card">Карта</SelectItem>
+                  <SelectItem value="transfer">Перевод</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
           <div className="space-y-2">
             <Label htmlFor="description">Описание</Label>
             <Textarea
@@ -166,13 +200,13 @@ export default function NewOrderPage() {
 
           <div className="grid gap-6 md:grid-cols-2">
             <div className="space-y-2">
-              <Label htmlFor="total_price">Сумма заказа (₽)</Label>
+              <Label htmlFor="total_amount">Сумма заказа (₽)</Label>
               <Input
-                id="total_price"
-                name="total_price"
+                id="total_amount"
+                name="total_amount"
                 type="number"
                 placeholder="0.00"
-                value={formData.total_price}
+                value={formData.total_amount}
                 onChange={handleChange}
                 min="0"
                 step="0.01"

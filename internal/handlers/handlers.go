@@ -28,13 +28,13 @@ func (h *Handler) InitRoutes() *gin.Engine {
 
 	// Настройка CORS
 	router.Use(cors.New(cors.Config{
-		AllowOrigins: []string{"http://localhost:3000"},
+		AllowOrigins: []string{"http://localhost:3000", "http://localhost:3001"},
 
 		AllowHeaders:     []string{"Origin", "Content-Length", "Content-Type", "Authorization", "Accept", "X-Requested-With"},
 		ExposeHeaders:    []string{"Content-Length", "Content-Type", "Authorization"},
 		AllowCredentials: true,
 		AllowOriginFunc: func(origin string) bool {
-			return origin == "http://localhost:3000"
+			return origin == "http://localhost:3000" || origin == "http://localhost:3001"
 		},
 		MaxAge: 12 * 60 * 60,
 	}))
@@ -60,12 +60,16 @@ func (h *Handler) InitRoutes() *gin.Engine {
 
 	api.Use(h.authMiddleware)
 
+	api.GET("/services", h.GetServices)
+	api.GET("/client-types", h.clientTypes)
+
 	client := api.Group("/client")
 	{
 		client.GET("", h.GetClient)
 		client.POST("", h.CreateClient)
 		client.PUT(":id", h.UpdateClient)
 		client.DELETE(":id", h.DeleteClient)
+
 	}
 
 	worker := api.Group("/worker")
@@ -496,4 +500,13 @@ func (h *Handler) DeleteClient(c *gin.Context) {
 
 	logger.Info("Успешно удален клиент ID:%d", id)
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
+}
+
+func (h *Handler) clientTypes(c *gin.Context) {
+	types, err := h.services.Client.GetTypes()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, types)
 }

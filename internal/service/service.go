@@ -54,6 +54,7 @@ type Client interface {
 	Update(id int, client models.Client) error
 	Delete(id int) error
 	AddCar(clientId int, car models.Car) error
+	GetTypes() ([]string, error)
 }
 
 type Order interface {
@@ -92,6 +93,7 @@ type Repository interface {
 	AddCarToClient(clientId int, car models.Car) error
 	UpdateClient(id int, client models.Client) error
 	DeleteClient(id int) error
+	GetClientTypes() ([]string, error)
 
 	//Services
 	CreateService(service models.Service) (int, error)

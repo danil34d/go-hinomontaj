@@ -9,6 +9,8 @@ import { useToast } from "@/components/ui/use-toast"
 import { ordersApi } from "@/lib/api"
 import { Plus, Search } from "lucide-react"
 import Link from "next/link"
+import { formatDistanceToNow } from "date-fns"
+import { ru } from "date-fns/locale"
 
 export default function WorkerOrdersPage() {
   const [orders, setOrders] = useState([])
@@ -39,8 +41,22 @@ export default function WorkerOrdersPage() {
   const filteredOrders = orders.filter(
     (order) =>
       order.id.toString().includes(searchQuery) ||
-      (order.client && order.client.name.toLowerCase().includes(searchQuery.toLowerCase())),
+      (order.client && order.client.name.toLowerCase().includes(searchQuery.toLowerCase())) ||
+      order.vehicle_number.toLowerCase().includes(searchQuery.toLowerCase())
   )
+
+  const getPaymentMethodText = (method) => {
+    switch (method) {
+      case "cash":
+        return "Наличные"
+      case "card":
+        return "Карта"
+      case "transfer":
+        return "Перевод"
+      default:
+        return "Н/Д"
+    }
+  }
 
   return (
     <DashboardLayout requiredRole="worker">
@@ -60,7 +76,7 @@ export default function WorkerOrdersPage() {
             <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
             <Input
               type="search"
-              placeholder="Поиск заказов..."
+              placeholder="Поиск по ID, клиенту или номеру авто..."
               className="pl-8"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
@@ -79,15 +95,17 @@ export default function WorkerOrdersPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Клиент</TableHead>
+                  <TableHead>Номер авто</TableHead>
                   <TableHead>Статус</TableHead>
-                  <TableHead>Дата создания</TableHead>
+                  <TableHead>Способ оплаты</TableHead>
                   <TableHead>Сумма</TableHead>
+                  <TableHead>Создан</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={5} className="h-24 text-center">
+                    <TableCell colSpan={7} className="h-24 text-center">
                       Заказы не найдены
                     </TableCell>
                   </TableRow>
@@ -96,6 +114,7 @@ export default function WorkerOrdersPage() {
                     <TableRow key={order.id}>
                       <TableCell>#{order.id}</TableCell>
                       <TableCell>{order.client?.name || "Н/Д"}</TableCell>
+                      <TableCell>{order.vehicle_number}</TableCell>
                       <TableCell>
                         <div
                           className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium
@@ -114,8 +133,11 @@ export default function WorkerOrdersPage() {
                               : "Новый"}
                         </div>
                       </TableCell>
-                      <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
-                      <TableCell>{order.total_price} ₽</TableCell>
+                      <TableCell>{getPaymentMethodText(order.payment_method)}</TableCell>
+                      <TableCell>{order.total_amount} ₽</TableCell>
+                      <TableCell title={new Date(order.created_at).toLocaleString()}>
+                        {formatDistanceToNow(new Date(order.created_at), { locale: ru, addSuffix: true })}
+                      </TableCell>
                     </TableRow>
                   ))
                 )}

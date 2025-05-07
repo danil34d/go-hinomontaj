@@ -604,3 +604,14 @@ func (r *Repository) getOrderServices(orderId int) ([]models.OrderService, error
 
 	return services, nil
 }
+
+
+func (r *Repository) GetClientTypes() ([]string, error) {
+	var types []string
+	query := `SELECT DISTINCT client_type FROM clients`
+	err := r.db.Select(&types, query)
+	if err != nil {
+		return nil, fmt.Errorf("ошибка при получении типов клиентов: %w", err)
+	}
+	return types, nil
+}
