@@ -192,7 +192,7 @@ func (r *Repository) GetAllClients() ([]models.Client, error) {
 	var clients []models.Client
 	query := `
 		SELECT c.id, c.name, c.client_type, c.created_at, c.updated_at,
-			   array_agg(cars.number) as car_numbers
+			   COALESCE(array_remove(array_agg(cars.number), NULL), ARRAY[]::varchar[]) as car_numbers
 		FROM clients c
 		LEFT JOIN clients_cars cc ON c.id = cc.client_id
 		LEFT JOIN cars ON cc.car_id = cars.id
@@ -442,14 +442,26 @@ func (r *Repository) CreateOrder(order models.Order) (int, error) {
 	}
 
 	// Добавляем услуги к заказу
-	for _, service := range order.Services {
-		_, err = tx.Exec(`
-			INSERT INTO order_services (order_id, service_id, service_description, wheel_position, price)
-			VALUES ($1, $2, $3, $4, $5)`,
-			orderId, service.ServiceID, service.Description, service.WheelPosition, service.Price)
-		if err != nil {
-			logger.Error("Ошибка при добавлении услуги к заказу: %v", err)
-			return 0, fmt.Errorf("ошибка при добавлении услуги к заказу: %w", err)
+	if order.Services != nil {
+		for _, service := range order.Services {
+			if service.ServiceID == 0 {
+				return 0, fmt.Errorf("не указан ID услуги")
+			}
+			if service.Description == "" {
+				return 0, fmt.Errorf("не указано описание услуги")
+			}
+			if service.Price <= 0 {
+				return 0, fmt.Errorf("неверная цена услуги")
+			}
+
+			_, err = tx.Exec(`
+				INSERT INTO order_services (order_id, service_id, service_description, wheel_position, price)
+				VALUES ($1, $2, $3, $4, $5)`,
+				orderId, service.ServiceID, service.Description, service.WheelPosition, service.Price)
+			if err != nil {
+				logger.Error("Ошибка при добавлении услуги к заказу: %v", err)
+				return 0, fmt.Errorf("ошибка при добавлении услуги к заказу: %w", err)
+			}
 		}
 	}
 
@@ -634,10 +646,15 @@ func (r *Repository) getOrderServices(orderId int) ([]models.OrderService, error
 
 func (r *Repository) GetClientTypes() ([]string, error) {
 	var types []string
-	query := `SELECT DISTINCT client_type FROM clients`
+	query := `SELECT DISTINCT client_type FROM clients ORDER BY client_type`
+
+	logger.Debug("Получение списка типов клиентов из БД")
 	err := r.db.Select(&types, query)
 	if err != nil {
+		logger.Error("Ошибка при получении типов клиентов: %v", err)
 		return nil, fmt.Errorf("ошибка при получении типов клиентов: %w", err)
 	}
+
+	logger.Debug("Получено типов клиентов: %d", len(types))
 	return types, nil
 }

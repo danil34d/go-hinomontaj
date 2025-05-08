@@ -197,6 +197,47 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+	// Валидация обязательных полей
+	if input.ClientID == 0 {
+		logger.Warning("Не указан ID клиента")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "не указан ID клиента"})
+		return
+	}
+	if input.VehicleNumber == "" {
+		logger.Warning("Не указан номер автомобиля")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "не указан номер автомобиля"})
+		return
+	}
+	if input.PaymentMethod == "" {
+		logger.Warning("Не указан способ оплаты")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "не указан способ оплаты"})
+		return
+	}
+	if len(input.Services) == 0 {
+		logger.Warning("Не указаны услуги")
+		c.JSON(http.StatusBadRequest, gin.H{"error": "не указаны услуги"})
+		return
+	}
+
+	// Валидация услуг
+	for _, service := range input.Services {
+		if service.ServiceID == 0 {
+			logger.Warning("Не указан ID услуги")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "не указан ID услуги"})
+			return
+		}
+		if service.Description == "" {
+			logger.Warning("Не указано описание услуги")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "не указано описание услуги"})
+			return
+		}
+		if service.Price <= 0 {
+			logger.Warning("Неверная цена услуги")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "неверная цена услуги"})
+			return
+		}
+	}
+
 	workerId, _ := c.Get("userId")
 	input.WorkerID = workerId.(int)
 
@@ -208,7 +249,7 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 	}
 
 	logger.Info("Успешно создан заказ ID:%d работником ID:%d", id, workerId)
-	c.JSON(http.StatusOK, gin.H{"id": id})
+	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
 func (h *Handler) UpdateOrder(c *gin.Context) {

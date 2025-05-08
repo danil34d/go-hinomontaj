@@ -49,6 +49,6 @@ func (s *ClientService) AddCarToClient(clientId int, car models.Car) error {
 }
 
 func (s *ClientService) GetTypes() ([]string, error) {
-	logger.Debug("Получение списка типов клиентов в сервисе")
+	logger.Debug("Получение списка типов клиентов")
 	return s.repo.GetClientTypes()
 }

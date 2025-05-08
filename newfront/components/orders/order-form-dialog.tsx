@@ -37,18 +37,19 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   })
 
   const [totalAmount, setTotalAmount] = useState(0)
+  const [selectedClientType, setSelectedClientType] = useState("")
 
   useEffect(() => {
     if (open) {
       fetchData()
       if (order) {
         setFormData({
-          client_id: order.client_id.toString(),
-          worker_id: order.worker_id.toString(),
-          vehicle_number: order.vehicle_number,
-          payment_method: order.payment_method,
-          description: order.description,
-          service_ids: order.services?.map(service => service.id.toString()) || [],
+          client_id: order.client_id?.toString() || "",
+          worker_id: order.worker_id?.toString() || "",
+          vehicle_number: order.vehicle_number || "",
+          payment_method: order.payment_method || "cash",
+          description: order.description || "",
+          service_ids: order.services?.map(service => service.service_id?.toString() || "") || [],
         })
       } else {
         setFormData({
@@ -64,13 +65,26 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   }, [open, order])
 
   useEffect(() => {
-    // Пересчитываем общую сумму при изменении выбранных услуг
+    // Обновляем тип клиента при выборе клиента
+    if (formData.client_id) {
+      const selectedClient = clients.find(c => c.id?.toString() === formData.client_id)
+      if (selectedClient) {
+        setSelectedClientType(selectedClient.client_type || "")
+      }
+    } else {
+      setSelectedClientType("")
+    }
+  }, [formData.client_id, clients])
+
+  useEffect(() => {
+    // Пересчитываем общую сумму при изменении выбранных услуг или типа клиента
     const total = formData.service_ids.reduce((sum, serviceId) => {
-      const service = services.find(s => s.id.toString() === serviceId)
-      return sum + (service?.price || 0)
+      const service = services.find(s => s.name === serviceId)
+      if (!service || !selectedClientType) return sum
+      return sum + (service.prices[selectedClientType] || 0)
     }, 0)
     setTotalAmount(total)
-  }, [formData.service_ids, services])
+  }, [formData.service_ids, services, selectedClientType])
 
   const fetchData = async () => {
     try {
@@ -80,10 +94,38 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
         servicesApi.getAll(),
         workersApi.getAll()
       ])
-      console.log("Полученные работники:", workersData)
-      setClients(clientsData)
-      setServices(servicesData)
-      setWorkers(workersData)
+      
+      // Проверяем и форматируем данные
+      const formattedClients = clientsData.map(client => ({
+        ...client,
+        id: client.id || 0,
+        name: client.name || '',
+        client_type: client.client_type || ''
+      }))
+
+      const formattedServices = servicesData.map(service => ({
+        ...service,
+        id: service.id || 0,
+        name: service.name || '',
+        prices: service.prices || {}
+      }))
+      
+      const formattedWorkers = workersData.map(worker => ({
+        ...worker,
+        id: worker.id || 0,
+        name: worker.name || '',
+        surname: worker.surname || ''
+      }))
+      
+      console.log("Полученные данные:", {
+        clients: formattedClients,
+        services: formattedServices,
+        workers: formattedWorkers
+      })
+
+      setClients(formattedClients)
+      setServices(formattedServices)
+      setWorkers(formattedWorkers)
     } catch (error) {
       console.error("Ошибка при загрузке данных:", error)
       toast({
@@ -102,20 +144,23 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   }
 
   const handleSelectChange = (name, value) => {
+    if (!value) return;
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleServiceSelect = (serviceId: string) => {
+  const handleServiceSelect = (serviceName: string) => {
+    if (!serviceName) return;
     setFormData(prev => ({
       ...prev,
-      service_ids: [...prev.service_ids, serviceId]
+      service_ids: [...prev.service_ids, serviceName]
     }))
   }
 
-  const handleRemoveService = (serviceId: string) => {
+  const handleRemoveService = (serviceName: string) => {
+    if (!serviceName) return;
     setFormData(prev => ({
       ...prev,
-      service_ids: prev.service_ids.filter(id => id !== serviceId)
+      service_ids: prev.service_ids.filter(name => name !== serviceName)
     }))
   }
 
@@ -133,7 +178,6 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       // Проверяем, что все ID корректно преобразуются в числа
       const clientId = parseInt(formData.client_id)
       const workerId = parseInt(formData.worker_id)
-      const serviceIds = formData.service_ids.map(id => parseInt(id))
 
       if (isNaN(clientId)) {
         throw new Error("Некорректный ID клиента")
@@ -141,16 +185,25 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       if (isNaN(workerId)) {
         throw new Error("Некорректный ID работника")
       }
-      if (serviceIds.some(isNaN)) {
-        throw new Error("Некорректные ID услуг")
-      }
 
       const orderData = {
-        ...formData,
         client_id: clientId,
         worker_id: workerId,
-        service_ids: serviceIds,
+        vehicle_number: formData.vehicle_number,
+        payment_method: formData.payment_method,
         total_amount: totalAmount,
+        services: formData.service_ids.map(serviceName => {
+          const service = services.find(s => s.name === serviceName)
+          if (!service) {
+            throw new Error(`Услуга ${serviceName} не найдена`)
+          }
+          return {
+            service_id: service.id,
+            service_description: service.name,
+            wheel_position: "all",
+            price: service.prices[selectedClientType] || 0
+          }
+        })
       }
 
       console.log("Отправляемые данные заказа:", orderData)
@@ -185,10 +238,10 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl" aria-describedby="order-dialog-description">
         <DialogHeader>
           <DialogTitle>{order ? "Редактирование заказа" : "Создание нового заказа"}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription id="order-dialog-description">
             {order ? "Измените данные заказа" : "Заполните форму для создания нового заказа"}
           </DialogDescription>
         </DialogHeader>
@@ -203,7 +256,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
               <div className="space-y-2">
                 <Label htmlFor="client_id">Клиент</Label>
                 <Select
-                  value={formData.client_id}
+                  value={formData.client_id || ""}
                   onValueChange={(value) => handleSelectChange("client_id", value)}
                   required
                 >
@@ -212,8 +265,8 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   </SelectTrigger>
                   <SelectContent>
                     {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id.toString()}>
-                        {client.name}
+                      <SelectItem key={client.id} value={client.id?.toString() || ""}>
+                        {client.name} ({client.client_type})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -223,11 +276,8 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
               <div className="space-y-2">
                 <Label htmlFor="worker_id">Работник</Label>
                 <Select
-                  value={formData.worker_id}
-                  onValueChange={(value) => {
-                    console.log("Выбран работник:", value)
-                    handleSelectChange("worker_id", value)
-                  }}
+                  value={formData.worker_id || ""}
+                  onValueChange={(value) => handleSelectChange("worker_id", value)}
                   required
                 >
                   <SelectTrigger>
@@ -235,8 +285,8 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   </SelectTrigger>
                   <SelectContent>
                     {workers.map((worker) => (
-                      <SelectItem key={worker.id} value={worker.id.toString()}>
-                        {worker.name}
+                      <SelectItem key={worker.id} value={worker.id?.toString() || ""}>
+                        {`${worker.name} ${worker.surname}`}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -268,27 +318,27 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   </SelectTrigger>
                   <SelectContent>
                     {services
-                      .filter(service => !formData.service_ids.includes(service.id.toString()))
+                      .filter(service => !formData.service_ids.includes(service.name))
                       .map((service) => (
-                        <SelectItem key={service.id} value={service.id.toString()}>
-                          {service.name} - {service.price} ₽
+                        <SelectItem key={service.name} value={service.name}>
+                          {service.name} - {service.prices[selectedClientType] || 0} ₽
                         </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
 
                 <div className="flex flex-wrap gap-2">
-                  {formData.service_ids.map((serviceId, index) => {
-                    const service = services.find(s => s.id.toString() === serviceId)
+                  {formData.service_ids.map((serviceName, index) => {
+                    const service = services.find(s => s.name === serviceName)
                     return service ? (
-                      <Badge key={`${service.id}-${index}`} variant="secondary" className="flex items-center gap-1">
-                        {service.name} - {service.price} ₽
+                      <Badge key={`${service.name}-${index}`} variant="secondary" className="flex items-center gap-1">
+                        {service.name} - {service.prices[selectedClientType] || 0} ₽
                         <Button
                           type="button"
                           variant="ghost"
                           size="icon"
                           className="h-4 w-4 p-0"
-                          onClick={() => handleRemoveService(serviceId)}
+                          onClick={() => handleRemoveService(serviceName)}
                         >
                           <X className="h-3 w-3" />
                         </Button>
