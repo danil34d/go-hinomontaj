@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"fmt"
 	"go-hinomontaj/internal/service"
 	"go-hinomontaj/models"
 	"go-hinomontaj/pkg/logger"
@@ -388,31 +389,82 @@ func (h *Handler) GetServices(c *gin.Context) {
 	services, err := h.services.Service.GetAll()
 	if err != nil {
 		logger.Error("Ошибка при получении списка услуг: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось получить список услуг"})
 		return
 	}
-	logger.Debug("Успешно получено %d услуг", len(services))
-	c.JSON(http.StatusOK, services)
+
+	// Группируем услуги по имени
+	groupedServices := make(map[string]map[string]int)
+	for _, service := range services {
+		if _, exists := groupedServices[service.Name]; !exists {
+			groupedServices[service.Name] = make(map[string]int)
+		}
+		groupedServices[service.Name][service.ClientType] = service.Price
+	}
+
+	// Преобразуем в массив для ответа
+	var result []map[string]interface{}
+	for name, prices := range groupedServices {
+		result = append(result, map[string]interface{}{
+			"name":   name,
+			"prices": prices,
+		})
+	}
+
+	logger.Info("Успешно получен список услуг")
+	c.JSON(http.StatusOK, result)
 }
 
 func (h *Handler) CreateService(c *gin.Context) {
 	logger.Debug("Получен запрос на создание услуги")
-	var input models.Service
+	var input struct {
+		Name   string             `json:"name"`
+		Prices map[string]float64 `json:"prices"`
+	}
+
 	if err := c.BindJSON(&input); err != nil {
 		logger.Warning("Ошибка привязки JSON при создании услуги: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
 
-	id, err := h.services.Service.Create(input)
+	// Получаем все типы клиентов
+	clientTypes, err := h.services.Client.GetTypes()
 	if err != nil {
-		logger.Error("Ошибка при создании услуги: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logger.Error("Ошибка при получении типов клиентов: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось получить типы клиентов"})
 		return
 	}
 
-	logger.Info("Успешно создана услуга ID:%d", id)
-	c.JSON(http.StatusCreated, gin.H{"id": id})
+	// Проверяем, что для каждого типа клиента указана цена
+	for _, clientType := range clientTypes {
+		if _, exists := input.Prices[clientType]; !exists {
+			logger.Warning("Не указана цена для типа клиента: %s", clientType)
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("не указана цена для типа клиента: %s", clientType)})
+			return
+		}
+	}
+
+	// Создаем услугу для каждого типа клиента
+	var serviceIds []int
+	for clientType, price := range input.Prices {
+		service := models.Service{
+			Name:       input.Name,
+			ClientType: clientType,
+			Price:      int(price),
+		}
+
+		id, err := h.services.Service.Create(service)
+		if err != nil {
+			logger.Error("Ошибка при создании услуги для типа клиента %s: %v", clientType, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("ошибка при создании услуги для типа клиента %s: %v", clientType, err)})
+			return
+		}
+		serviceIds = append(serviceIds, id)
+	}
+
+	logger.Info("Успешно созданы услуги с ID: %v", serviceIds)
+	c.JSON(http.StatusCreated, gin.H{"ids": serviceIds})
 }
 
 func (h *Handler) UpdateService(c *gin.Context) {
@@ -424,21 +476,51 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	}
 
 	logger.Debug("Получен запрос на обновление услуги ID:%d", id)
-	var input models.Service
+	var input struct {
+		Name   string             `json:"name"`
+		Prices map[string]float64 `json:"prices"`
+	}
+
 	if err := c.BindJSON(&input); err != nil {
 		logger.Warning("Ошибка привязки JSON при обновлении услуги: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
 
-	if err := h.services.Service.Update(id, input); err != nil {
-		logger.Error("Ошибка при обновлении услуги ID:%d: %v", id, err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	// Получаем все типы клиентов
+	clientTypes, err := h.services.Client.GetTypes()
+	if err != nil {
+		logger.Error("Ошибка при получении типов клиентов: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось получить типы клиентов"})
 		return
 	}
 
+	// Проверяем, что для каждого типа клиента указана цена
+	for _, clientType := range clientTypes {
+		if _, exists := input.Prices[clientType]; !exists {
+			logger.Warning("Не указана цена для типа клиента: %s", clientType)
+			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("не указана цена для типа клиента: %s", clientType)})
+			return
+		}
+	}
+
+	// Обновляем услугу для каждого типа клиента
+	for clientType, price := range input.Prices {
+		service := models.Service{
+			Name:       input.Name,
+			ClientType: clientType,
+			Price:      int(price),
+		}
+
+		if err := h.services.Service.Update(id, service); err != nil {
+			logger.Error("Ошибка при обновлении услуги для типа клиента %s: %v", clientType, err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("ошибка при обновлении услуги для типа клиента %s: %v", clientType, err)})
+			return
+		}
+	}
+
 	logger.Info("Успешно обновлена услуга ID:%d", id)
-	c.JSON(http.StatusOK, gin.H{"status": "успешно обновлено"})
+	c.JSON(http.StatusOK, gin.H{"message": "услуга успешно обновлена"})
 }
 
 func (h *Handler) DeleteService(c *gin.Context) {

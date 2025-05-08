@@ -199,54 +199,79 @@ export const workersApi = {
   },
 }
 
+// API для работы с типами клиентов
+export const clientTypesApi = {
+  getAll: async () => {
+    const response = await fetch(`${API_BASE_URL}/api/client-types`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+    });
+    if (!response.ok) {
+      throw new Error('Не удалось получить типы клиентов');
+    }
+    return response.json();
+  },
+}
+
 // API для работы с услугами (для менеджера)
 export const servicesApi = {
-  // Получить все услуги
   getAll: async () => {
-    const response = await fetchWithAuth("/api/manager/services")
+    const response = await fetch(`${API_BASE_URL}/api/manager/services`, {
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+    });
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось получить услуги")
+      throw new Error('Не удалось получить список услуг');
     }
-    return response.json()
+    return response.json();
   },
 
-  // Создать услугу
-  create: async (service) => {
-    const response = await fetchWithAuth("/api/manager/services", {
-      method: "POST",
-      body: JSON.stringify(service),
-    })
+  create: async (data: { name: string; prices: Record<string, number> }) => {
+    const response = await fetch(`${API_BASE_URL}/api/manager/services`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: JSON.stringify(data),
+    });
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось создать услугу")
+      const error = await response.json();
+      throw new Error(error.error || 'Не удалось создать услугу');
     }
-    return response.json()
+    return response.json();
   },
 
-  // Обновить услугу
-  update: async (id, service) => {
-    const response = await fetchWithAuth(`/api/manager/services/${id}`, {
-      method: "PUT",
-      body: JSON.stringify(service),
-    })
+  update: async (id: number, data: { name: string; prices: Record<string, number> }) => {
+    const response = await fetch(`${API_BASE_URL}/api/manager/services/${id}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+      body: JSON.stringify(data),
+    });
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось обновить услугу")
+      const error = await response.json();
+      throw new Error(error.error || 'Не удалось обновить услугу');
     }
-    return response.json()
+    return response.json();
   },
 
-  // Удалить услугу
-  delete: async (id) => {
-    const response = await fetchWithAuth(`/api/manager/services/${id}`, {
-      method: "DELETE",
-    })
+  delete: async (id: number) => {
+    const response = await fetch(`${API_BASE_URL}/api/manager/services/${id}`, {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${localStorage.getItem('token')}`,
+      },
+    });
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось удалить услугу")
+      const error = await response.json();
+      throw new Error(error.error || 'Не удалось удалить услугу');
     }
-    return response.json()
+    return response.json();
   },
 }
 
