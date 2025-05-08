@@ -279,19 +279,55 @@ func (h *Handler) GetWorkers(c *gin.Context) {
 }
 
 func (h *Handler) CreateWorker(c *gin.Context) {
-	var input models.Worker
+	var input struct {
+		Name     string `json:"name"`
+		Surname  string `json:"surname"`
+		Email    string `json:"email"`
+		Password string `json:"password"`
+		Role     string `json:"role"`
+	}
+
 	if err := c.BindJSON(&input); err != nil {
+		logger.Error("Ошибка при разборе JSON: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
 
-	id, err := h.services.Worker.Create(input)
+	logger.Debug("Получены данные для создания работника: %+v", input)
+
+	// Создаем учетную запись пользователя с данными из запроса
+	loginInput := models.SignUpInput{
+		Name:     input.Name,
+		Email:    input.Email,
+		Password: input.Password,
+		Role:     input.Role,
+	}
+
+	logger.Debug("Данные для регистрации: %+v", loginInput)
+
+	_, user, err := h.services.Auth.Register(loginInput)
 	if err != nil {
+		logger.Error("Ошибка при создании учетной записи работника: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	c.JSON(http.StatusCreated, gin.H{"id": id})
+	// Создаем запись в таблице workers
+	workerInput := models.Worker{
+		Name:    input.Name,
+		Surname: input.Surname,
+		Salary:  0, // Устанавливаем начальную зарплату
+	}
+
+	workerId, err := h.services.Worker.Create(workerInput)
+	if err != nil {
+		logger.Error("Ошибка при создании записи работника: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно создан работник ID:%d с учетной записью %s", workerId, user.Email)
+	c.JSON(http.StatusCreated, gin.H{"id": workerId})
 }
 
 func (h *Handler) GetWorker(c *gin.Context) {

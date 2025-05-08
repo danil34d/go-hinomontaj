@@ -11,12 +11,15 @@ import { workersApi } from "@/lib/api"
 import { Edit, MoreHorizontal, Plus, Search, Trash } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { WorkerFormDialog } from "@/components/workers/worker-form-dialog"
+import { WorkerEditDialog } from "@/components/workers/worker-edit-dialog"
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
+  const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
+  const [selectedWorker, setSelectedWorker] = useState(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -67,6 +70,11 @@ export default function WorkersPage() {
     }
   }
 
+  const handleEdit = (worker) => {
+    setSelectedWorker(worker)
+    setIsEditDialogOpen(true)
+  }
+
   const filteredWorkers = workers.filter(
     (worker) =>
       worker.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -108,9 +116,9 @@ export default function WorkersPage() {
                 <TableRow>
                   <TableHead>ID</TableHead>
                   <TableHead>Имя</TableHead>
+                  <TableHead>Фамилия</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Телефон</TableHead>
-                  <TableHead>Должность</TableHead>
+                  <TableHead>Роль</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
@@ -126,9 +134,13 @@ export default function WorkersPage() {
                     <TableRow key={worker.id}>
                       <TableCell>#{worker.id}</TableCell>
                       <TableCell>{worker.name}</TableCell>
+                      <TableCell>{worker.surname}</TableCell>
                       <TableCell>{worker.email}</TableCell>
-                      <TableCell>{worker.phone || "Н/Д"}</TableCell>
-                      <TableCell>{worker.position || "Н/Д"}</TableCell>
+                      <TableCell>
+                        <Badge variant={worker.role === "manager" ? "default" : "secondary"}>
+                          {worker.role === "manager" ? "Менеджер" : "Работник"}
+                        </Badge>
+                      </TableCell>
                       <TableCell>
                         <DropdownMenu>
                           <DropdownMenuTrigger asChild>
@@ -137,8 +149,7 @@ export default function WorkersPage() {
                             </Button>
                           </DropdownMenuTrigger>
                           <DropdownMenuContent align="end">
-                            <DropdownMenuItem>
-                              <Edit className="mr-2 h-4 w-4" />
+                            <DropdownMenuItem onClick={() => handleEdit(worker)}>
                               Редактировать
                             </DropdownMenuItem>
                             <DropdownMenuItem onClick={() => handleDeleteWorker(worker.id)}>
@@ -162,6 +173,15 @@ export default function WorkersPage() {
         onOpenChange={setIsCreateDialogOpen}
         onSuccess={fetchWorkers}
       />
+
+      {selectedWorker && (
+        <WorkerEditDialog
+          open={isEditDialogOpen}
+          onOpenChange={setIsEditDialogOpen}
+          worker={selectedWorker}
+          onSuccess={fetchWorkers}
+        />
+      )}
     </DashboardLayout>
   )
 }

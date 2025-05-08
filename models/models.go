@@ -7,8 +7,9 @@ import (
 )
 
 type User struct {
-	ID       int    `json:"id" db:"id"`
-	Name     string `json:"name" db:"name"`
+	ID   int    `json:"id" db:"id"`
+	Name string `json:"name" db:"name"`
+
 	Email    string `json:"email" db:"email"`
 	Password string `json:"password" db:"password_hash"`
 	Role     string `json:"role" db:"role"`
@@ -86,9 +87,12 @@ type Worker struct {
 	ID        int       `json:"id" db:"id"`
 	Name      string    `json:"name" db:"name"`
 	Surname   string    `json:"surname" db:"surname"`
-	Salary    int       `json:"salary" db:"salary"`
+	Salary    float64   `json:"salary" db:"salary"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+	Email     string    `json:"email" db:"-"`
+	Password  string    `json:"password" db:"-"`
+	Role      string    `json:"role" db:"-"`
 }
 
 type Statistics struct {

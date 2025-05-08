@@ -31,4 +31,6 @@ RUN apk add --no-cache wget && \
 
 EXPOSE 8080
 
-CMD ["./main"] 
+# Исправляем команду запуска
+ENTRYPOINT ["./main"]
+CMD ["--with-testdata"] 

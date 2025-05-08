@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -9,13 +9,14 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/components/ui/use-toast"
 import { workersApi } from "@/lib/api"
 
-interface WorkerFormDialogProps {
+interface WorkerEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
+  worker: any
   onSuccess: () => void
 }
 
-export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDialogProps) {
+export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: WorkerEditDialogProps) {
   const [submitting, setSubmitting] = useState(false)
   const { toast } = useToast()
 
@@ -23,9 +24,21 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
     name: "",
     surname: "",
     email: "",
-    role: "worker",
+    role: "",
     password: "",
   })
+
+  useEffect(() => {
+    if (worker) {
+      setFormData({
+        name: worker.name || "",
+        surname: worker.surname || "",
+        email: worker.email || "",
+        role: worker.role || "worker",
+        password: "", // Не заполняем пароль при редактировании
+      })
+    }
+  }, [worker])
 
   const handleChange = (e) => {
     const { name, value } = e.target
@@ -42,26 +55,26 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
     try {
       setSubmitting(true)
 
-      if (!formData.name || !formData.surname || !formData.email || !formData.password) {
-        throw new Error("Необходимо заполнить все поля")
+      if (!formData.name || !formData.surname || !formData.email) {
+        throw new Error("Необходимо заполнить все обязательные поля")
       }
 
-      if (formData.password.length < 6) {
-        throw new Error("Пароль должен содержать минимум 6 символов")
+      // Если пароль не указан, не отправляем его
+      const updateData = { ...formData }
+      if (!updateData.password) {
+        delete updateData.password
       }
 
-      console.log("Отправляемые данные сотрудника:", formData)
-
-      await workersApi.create(formData)
+      await workersApi.update(worker.id, updateData)
       toast({
         title: "Успешно",
-        description: "Сотрудник успешно создан",
+        description: "Данные сотрудника обновлены",
       })
 
       onSuccess()
       onOpenChange(false)
     } catch (error) {
-      console.error("Ошибка при создании сотрудника:", error)
+      console.error("Ошибка при обновлении сотрудника:", error)
       toast({
         variant: "destructive",
         title: "Ошибка",
@@ -76,9 +89,9 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-md">
         <DialogHeader>
-          <DialogTitle>Создание нового сотрудника</DialogTitle>
+          <DialogTitle>Редактирование сотрудника</DialogTitle>
           <DialogDescription>
-            Заполните форму для создания нового сотрудника
+            Измените данные сотрудника
           </DialogDescription>
         </DialogHeader>
 
@@ -138,19 +151,18 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="password">Пароль</Label>
+            <Label htmlFor="password">Новый пароль (необязательно)</Label>
             <Input
               id="password"
               name="password"
               type="password"
-              placeholder="Введите пароль (минимум 6 символов)"
+              placeholder="Введите новый пароль (минимум 6 символов)"
               value={formData.password}
               onChange={handleChange}
-              required
               minLength={6}
             />
             <p className="text-sm text-muted-foreground">
-              Пароль должен содержать минимум 6 символов
+              Оставьте поле пустым, если не хотите менять пароль
             </p>
           </div>
 
@@ -159,7 +171,7 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
               Отмена
             </Button>
             <Button type="submit" disabled={submitting}>
-              {submitting ? "Создание..." : "Создать"}
+              {submitting ? "Сохранение..." : "Сохранить"}
             </Button>
           </div>
         </form>

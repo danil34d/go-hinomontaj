@@ -138,7 +138,8 @@ export const workersApi = {
   getAll: async () => {
     const response = await fetchWithAuth("/api/manager/workers")
     if (!response.ok) {
-      throw new Error("Не удалось загрузить список сотрудников")
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось загрузить список сотрудников")
     }
     return response.json()
   },
@@ -154,7 +155,7 @@ export const workersApi = {
   },
 
   // Создать сотрудника
-  create: async (data: { name: string; role: string; password: string }) => {
+  create: async (data) => {
     const response = await fetchWithAuth("/api/manager/workers", {
       method: "POST",
       headers: {
@@ -163,16 +164,20 @@ export const workersApi = {
       body: JSON.stringify(data),
     })
     if (!response.ok) {
-      throw new Error("Не удалось создать сотрудника")
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось создать сотрудника")
     }
     return response.json()
   },
 
   // Обновить сотрудника
-  update: async (id, worker) => {
+  update: async (id, data) => {
     const response = await fetchWithAuth(`/api/manager/workers/${id}`, {
       method: "PUT",
-      body: JSON.stringify(worker),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     })
     if (!response.ok) {
       const error = await response.json()
@@ -185,9 +190,6 @@ export const workersApi = {
   delete: async (id) => {
     const response = await fetchWithAuth(`/api/manager/workers/${id}`, {
       method: "DELETE",
-      headers: {
-        "Content-Type": "application/json",
-      }
     })
     if (!response.ok) {
       const error = await response.json()
