@@ -49,12 +49,13 @@ func (h *Handler) workerRoleMiddleware(c *gin.Context) {
 	logger.Debug("Проверка роли worker для запроса: %s %s", c.Request.Method, c.Request.URL.Path)
 
 	role, _ := c.Get(roleCtx)
-	if role != "worker" {
+	// Менеджер имеет доступ ко всем эндпоинтам
+	if role != "worker" && role != "manager" {
 		logger.Warning("Попытка доступа к worker endpoint с ролью: %v", role)
 		c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "доступ запрещен"})
 		return
 	}
-	logger.Debug("Доступ разрешен для worker")
+	logger.Debug("Доступ разрешен для %s", role)
 	c.Next()
 }
 

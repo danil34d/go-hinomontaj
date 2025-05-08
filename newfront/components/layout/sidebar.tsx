@@ -25,7 +25,6 @@ export function Sidebar() {
       : [
           { href: "/dashboard/worker", label: "Главная", icon: Home },
           { href: "/dashboard/worker/orders", label: "Мои заказы", icon: ClipboardList },
-          { href: "/dashboard/worker/new-order", label: "Новый заказ", icon: Package },
           { href: "/dashboard/worker/statistics", label: "Моя статистика", icon: BarChart3 },
         ]
 

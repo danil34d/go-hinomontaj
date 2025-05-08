@@ -1,0 +1,33 @@
+# Этап сборки
+FROM node:18-alpine AS builder
+
+WORKDIR /app
+
+# Копируем только package.json и package-lock.json (если есть)
+COPY package*.json ./
+
+# Устанавливаем зависимости
+RUN npm install --legacy-peer-deps
+
+# Копируем исходный код (node_modules исключены через .dockerignore)
+COPY . .
+
+# Собираем приложение
+RUN npm run build
+
+# Этап production
+FROM node:18-alpine
+
+WORKDIR /app
+
+# Копируем только необходимые файлы из этапа сборки
+COPY --from=builder /app/package*.json ./
+COPY --from=builder /app/.next ./.next
+COPY --from=builder /app/public ./public
+COPY --from=builder /app/node_modules ./node_modules
+
+# Открываем порт
+EXPOSE 3000
+
+# Запускаем приложение
+CMD ["npm", "start"] 

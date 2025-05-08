@@ -1,28 +1,53 @@
-version: '3.8'
-
 services:
-  postgres:
-    image: postgres:15-alpine
-    container_name: hinomontaj-db
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: hinomontaj
+      - DB_HOST=db
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=hinomontaj
+      - DB_PORT=5432
+    depends_on:
+      - db
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  frontend:
+    build:
+      context: ./newfront
+      dockerfile: Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    depends_on:
+      - backend
+    networks:
+      - app-network
+    restart: unless-stopped
+
+  db:
+    image: postgres:15-alpine
     ports:
       - "5432:5432"
+    environment:
+      - POSTGRES_USER=postgres
+      - POSTGRES_PASSWORD=postgres
+      - POSTGRES_DB=hinomontaj
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U postgres"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
     networks:
-      - hinomontaj-network
-
-volumes:
-  postgres_data:
+      - app-network
+    restart: unless-stopped
 
 networks:
-  hinomontaj-network:
-    driver: bridge 
+  app-network:
+    driver: bridge
+
+volumes:
+  postgres_data: 

@@ -9,11 +9,14 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { useToast } from "@/components/ui/use-toast"
 import { workersApi } from "@/lib/api"
 import { Edit, MoreHorizontal, Plus, Search, Trash } from "lucide-react"
+import { Badge } from "@/components/ui/badge"
+import { WorkerFormDialog } from "@/components/workers/worker-form-dialog"
 
 export default function WorkersPage() {
   const [workers, setWorkers] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -26,10 +29,11 @@ export default function WorkersPage() {
       const data = await workersApi.getAll()
       setWorkers(data)
     } catch (error) {
+      console.error("Ошибка при загрузке сотрудников:", error)
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error.message,
+        description: "Не удалось загрузить список сотрудников",
       })
     } finally {
       setLoading(false)
@@ -38,6 +42,16 @@ export default function WorkersPage() {
 
   const handleDeleteWorker = async (id) => {
     try {
+      const user = JSON.parse(localStorage.getItem("user"))
+      if (user.role !== "manager") {
+        toast({
+          variant: "destructive",
+          title: "Ошибка",
+          description: "У вас нет прав на удаление сотрудников",
+        })
+        return
+      }
+
       await workersApi.delete(id)
       toast({
         title: "Успешно",
@@ -64,9 +78,9 @@ export default function WorkersPage() {
       <div className="space-y-6">
         <div className="flex items-center justify-between">
           <h1 className="text-3xl font-bold tracking-tight">Управление сотрудниками</h1>
-          <Button>
+          <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="mr-2 h-4 w-4" />
-            Новый сотрудник
+            Создать сотрудника
           </Button>
         </div>
 
@@ -142,6 +156,12 @@ export default function WorkersPage() {
           </div>
         )}
       </div>
+
+      <WorkerFormDialog
+        open={isCreateDialogOpen}
+        onOpenChange={setIsCreateDialogOpen}
+        onSuccess={fetchWorkers}
+      />
     </DashboardLayout>
   )
 }

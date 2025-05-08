@@ -1,4 +1,15 @@
+// Базовый URL для API
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8080"
+
 // Базовый API клиент для работы с бэкендом
+function getToken() {
+  const token = localStorage.getItem("token")
+  if (!token) {
+    console.error("Токен не найден в localStorage")
+    throw new Error("Требуется авторизация")
+  }
+  return token
+}
 
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem("token")
@@ -9,20 +20,25 @@ export async function fetchWithAuth(url: string, options: RequestInit = {}) {
     ...options.headers,
   }
 
-  const response = await fetch(url, {
-    ...options,
-    headers,
-  })
+  try {
+    const response = await fetch(`${API_BASE_URL}${url}`, {
+      ...options,
+      headers,
+    })
 
-  // Если получили 401, значит токен истек или недействителен
-  if (response.status === 401) {
-    localStorage.removeItem("token")
-    localStorage.removeItem("user")
-    window.location.href = "/login"
-    throw new Error("Сессия истекла. Пожалуйста, войдите снова.")
+    // Если получили 401, значит токен истек или недействителен
+    if (response.status === 401) {
+      localStorage.removeItem("token")
+      localStorage.removeItem("user")
+      window.location.href = "/login"
+      throw new Error("Сессия истекла. Пожалуйста, войдите снова.")
+    }
+
+    return response
+  } catch (error) {
+    console.error("Ошибка при выполнении запроса:", error)
+    throw new Error("Не удалось подключиться к серверу. Проверьте, что сервер запущен.")
   }
-
-  return response
 }
 
 // API для работы с заказами
@@ -31,8 +47,7 @@ export const ordersApi = {
   getAll: async () => {
     const response = await fetchWithAuth("/api/manager")
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось получить заказы")
+      throw new Error("Не удалось загрузить заказы")
     }
     return response.json()
   },
@@ -41,48 +56,66 @@ export const ordersApi = {
   getMyOrders: async () => {
     const response = await fetchWithAuth("/api/worker")
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось получить заказы")
+      throw new Error("Не удалось загрузить заказы")
     }
     return response.json()
   },
 
   // Создать заказ (для работника)
-  create: async (order) => {
+  create: async (data: Omit<Order, "id" | "created_at" | "updated_at">) => {
+    console.log("Отправка запроса на создание заказа:", data)
     const response = await fetchWithAuth("/api/worker", {
       method: "POST",
-      body: JSON.stringify(order),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        client_id: data.client_id,
+        vehicle_number: data.vehicle_number,
+        payment_method: data.payment_method,
+        description: data.description,
+        service_ids: data.service_ids,
+        total_amount: data.total_amount,
+      }),
     })
+
+    console.log("Получен ответ:", response.status, response.statusText)
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось создать заказ")
+      const errorData = await response.json()
+      console.error("Ошибка при создании заказа:", errorData)
+      throw new Error(errorData.error || "Не удалось создать заказ")
     }
+
     return response.json()
   },
 
   // Обновить заказ (для менеджера)
-  update: async (id, order) => {
-    const response = await fetchWithAuth(`/api/manager/${id}`, {
+  update: async (id, data) => {
+    const response = await fetch(`/api/manager/${id}`, {
       method: "PUT",
-      body: JSON.stringify(order),
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${getToken()}`,
+      },
+      body: JSON.stringify(data),
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось обновить заказ")
+      throw new Error("Не удалось обновить заказ")
     }
     return response.json()
   },
 
   // Удалить заказ (для менеджера)
   delete: async (id) => {
-    const response = await fetchWithAuth(`/api/manager/${id}`, {
+    const response = await fetch(`/api/manager/${id}`, {
       method: "DELETE",
+      headers: {
+        Authorization: `Bearer ${getToken()}`,
+      },
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось удалить заказ")
+      throw new Error("Не удалось удалить заказ")
     }
-    return response.json()
   },
 }
 
@@ -105,8 +138,7 @@ export const workersApi = {
   getAll: async () => {
     const response = await fetchWithAuth("/api/manager/workers")
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось получить сотрудников")
+      throw new Error("Не удалось загрузить список сотрудников")
     }
     return response.json()
   },
@@ -122,14 +154,16 @@ export const workersApi = {
   },
 
   // Создать сотрудника
-  create: async (worker) => {
+  create: async (data: { name: string; role: string; password: string }) => {
     const response = await fetchWithAuth("/api/manager/workers", {
       method: "POST",
-      body: JSON.stringify(worker),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     })
     if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось создать сотрудника")
+      throw new Error("Не удалось создать сотрудника")
     }
     return response.json()
   },
@@ -151,6 +185,9 @@ export const workersApi = {
   delete: async (id) => {
     const response = await fetchWithAuth(`/api/manager/workers/${id}`, {
       method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+      }
     })
     if (!response.ok) {
       const error = await response.json()

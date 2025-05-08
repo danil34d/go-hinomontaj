@@ -10,6 +10,8 @@ import { ordersApi } from "@/lib/api"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
 import { useToast } from "@/components/ui/use-toast"
+import { Badge } from "@/components/ui/badge"
+import { Table, TableBody, TableCell, TableHeader, TableRow } from "@/components/ui/table"
 
 interface Order {
   id: number
@@ -45,27 +47,34 @@ export default function WorkerDashboard() {
     try {
       setLoading(true)
       const data = await ordersApi.getMyOrders()
-      setOrders(data)
+      setOrders(data || [])
       
       // Подсчет статистики
       const now = new Date()
       const weekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000)
       
       const stats = {
-        total: data.length,
-        active: data.filter(order => order.status === "in_progress").length,
-        completed: data.filter(order => 
-          order.status === "completed" && 
-          new Date(order.updated_at) > weekAgo
-        ).length
+        total: data?.length || 0,
+        active: data?.filter(order => order?.status === "in_progress")?.length || 0,
+        completed: data?.filter(order => 
+          order?.status === "completed" && 
+          new Date(order?.updated_at) > weekAgo
+        )?.length || 0
       }
       
       setStats(stats)
     } catch (error) {
+      console.error("Ошибка при загрузке заказов:", error)
       toast({
         title: "Ошибка",
         description: "Не удалось загрузить заказы",
         variant: "destructive"
+      })
+      setOrders([])
+      setStats({
+        total: 0,
+        active: 0,
+        completed: 0
       })
     } finally {
       setLoading(false)
@@ -102,10 +111,6 @@ export default function WorkerDashboard() {
             <h1 className="text-3xl font-bold tracking-tight">Панель сотрудника</h1>
             <p className="text-muted-foreground">Управление вашими заказами</p>
           </div>
-          <Button onClick={() => router.push("/dashboard/worker/new-order")}>
-            <Plus className="mr-2 h-4 w-4" />
-            Новый заказ
-          </Button>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -116,9 +121,7 @@ export default function WorkerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.total}</div>
-              <p className="text-xs text-muted-foreground">
-                +{stats.completed} за последнюю неделю
-              </p>
+              <p className="text-xs text-muted-foreground">За все время</p>
             </CardContent>
           </Card>
 
@@ -129,9 +132,7 @@ export default function WorkerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.active}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.active > 0 ? "Требуют внимания" : "Нет активных заказов"}
-              </p>
+              <p className="text-xs text-muted-foreground">В работе</p>
             </CardContent>
           </Card>
 
@@ -142,9 +143,7 @@ export default function WorkerDashboard() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{stats.completed}</div>
-              <p className="text-xs text-muted-foreground">
-                {stats.completed > 0 ? "Успешно выполненных заказов" : "Нет выполненных заказов"}
-              </p>
+              <p className="text-xs text-muted-foreground">За последние 7 дней</p>
             </CardContent>
           </Card>
         </div>
@@ -179,7 +178,7 @@ export default function WorkerDashboard() {
                         Заказ #{order.id} • {order.vehicle_number}
                       </p>
                       <p className="text-xs text-muted-foreground">
-                        Клиент: {order.client.name} • {formatDistanceToNow(new Date(order.created_at), { locale: ru, addSuffix: true })}
+                        Клиент: {order.client?.name || "Н/Д"} • {formatDistanceToNow(new Date(order.created_at), { locale: ru, addSuffix: true })}
                       </p>
                     </div>
                     <div className={`rounded-full px-2 py-1 text-xs font-medium ${getStatusColor(order.status)}`}>
