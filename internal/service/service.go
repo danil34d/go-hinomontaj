@@ -53,7 +53,8 @@ type Client interface {
 	GetById(id int) (models.Client, error)
 	Update(id int, client models.Client) error
 	Delete(id int) error
-	AddCar(clientId int, car models.Car) error
+	GetClientCars(clientId int) ([]models.Car, error)
+	AddCarToClient(clientId int, car models.Car) error
 	GetTypes() ([]string, error)
 }
 
@@ -90,6 +91,7 @@ type Repository interface {
 	CreateClient(client models.Client) (int, error)
 	GetAllClients() ([]models.Client, error)
 	GetClientById(id int) (models.Client, error)
+	GetClientCars(clientId int) ([]models.Car, error)
 	AddCarToClient(clientId int, car models.Car) error
 	UpdateClient(id int, client models.Client) error
 	DeleteClient(id int) error

@@ -64,15 +64,6 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	api.GET("/services", h.GetServices)
 	api.GET("/client-types", h.clientTypes)
 
-	client := api.Group("/client")
-	{
-		client.GET("", h.GetClient)
-		client.POST("", h.CreateClient)
-		client.PUT(":id", h.UpdateClient)
-		client.DELETE(":id", h.DeleteClient)
-
-	}
-
 	worker := api.Group("/worker")
 	worker.Use(h.workerRoleMiddleware)
 	{
@@ -87,6 +78,17 @@ func (h *Handler) InitRoutes() *gin.Engine {
 		manager.PUT(":id", h.UpdateOrder)
 		manager.DELETE(":id", h.DeleteOrder)
 		manager.GET("/statistics", h.GetStatistics)
+
+		// Управление клиентами
+		clients := manager.Group("/clients")
+		{
+			clients.GET("", h.GetClient)
+			clients.POST("", h.CreateClient)
+			clients.PUT("/:id", h.UpdateClient)
+			clients.DELETE("/:id", h.DeleteClient)
+			clients.GET("/:id/vehicles", h.GetClientCars)
+			clients.POST("/:id/vehicles", h.CreateClientCar)
+		}
 
 		// Управление сотрудниками
 		workers := manager.Group("/workers")
@@ -627,4 +629,50 @@ func (h *Handler) clientTypes(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, types)
+}
+
+// GetClientCars получает список автомобилей клиента
+func (h *Handler) GetClientCars(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID клиента при получении автомобилей: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на получение автомобилей клиента ID:%d", id)
+	cars, err := h.services.Client.GetClientCars(id)
+	if err != nil {
+		logger.Error("Ошибка при получении автомобилей клиента ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Debug("Успешно получено %d автомобилей для клиента ID:%d", len(cars), id)
+	c.JSON(http.StatusOK, cars)
+}
+
+// CreateClientCar добавляет автомобиль клиенту
+func (h *Handler) CreateClientCar(c *gin.Context) {
+	clientId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Error("Неверный ID клиента: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID клиента"})
+		return
+	}
+
+	var car models.Car
+	if err := c.ShouldBindJSON(&car); err != nil {
+		logger.Error("Ошибка при разборе данных автомобиля: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверные данные автомобиля"})
+		return
+	}
+
+	if err := h.services.Client.AddCarToClient(clientId, car); err != nil {
+		logger.Error("Ошибка при добавлении автомобиля клиенту: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка при добавлении автомобиля клиенту"})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Автомобиль успешно добавлен"})
 }

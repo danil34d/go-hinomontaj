@@ -38,7 +38,12 @@ func (s *ClientService) Delete(id int) error {
 	return s.repo.DeleteClient(id)
 }
 
-func (s *ClientService) AddCar(clientId int, car models.Car) error {
+func (s *ClientService) GetClientCars(clientId int) ([]models.Car, error) {
+	logger.Debug("Получение автомобилей клиента в сервисе: %d", clientId)
+	return s.repo.GetClientCars(clientId)
+}
+
+func (s *ClientService) AddCarToClient(clientId int, car models.Car) error {
 	logger.Debug("Добавление автомобиля клиенту в сервисе: %d", clientId)
 	return s.repo.AddCarToClient(clientId, car)
 }

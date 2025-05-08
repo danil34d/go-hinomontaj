@@ -73,26 +73,10 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
       setLoading(true)
       console.log("Загрузка данных для формы заказа...")
       
-      // Используем fetchWithAuth из api.ts
-      const [clientsResponse, servicesResponse] = await Promise.all([
-        fetch("/api/client", {
-          headers: {
-            "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          },
-        }),
-        fetch("/api/services", {
-          headers: {
-            "Authorization": `Bearer ${localStorage.getItem("token")}`,
-          },
-        })
+      const [clientsData, servicesData] = await Promise.all([
+        clientsApi.getAll(),
+        servicesApi.getAll()
       ])
-
-      if (!clientsResponse.ok || !servicesResponse.ok) {
-        throw new Error("Ошибка при загрузке данных")
-      }
-
-      const clientsData = await clientsResponse.json()
-      const servicesData = await servicesResponse.json()
 
       console.log("Полученные клиенты:", clientsData)
       console.log("Полученные услуги:", servicesData)

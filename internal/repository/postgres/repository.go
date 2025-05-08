@@ -231,37 +231,64 @@ func (r *Repository) GetClientById(id int) (models.Client, error) {
 	return client, nil
 }
 
+func (r *Repository) GetClientCars(clientId int) ([]models.Car, error) {
+	var cars []models.Car
+	query := `
+		SELECT c.id, c.number, c.model, c.year, c.created_at, c.updated_at
+		FROM cars c
+		JOIN clients_cars cc ON c.id = cc.car_id
+		WHERE cc.client_id = $1
+		ORDER BY c.created_at DESC`
+
+	logger.Debug("Получение автомобилей клиента ID:%d", clientId)
+	err := r.db.Select(&cars, query, clientId)
+	if err != nil {
+		logger.Error("Ошибка при получении автомобилей клиента: %v", err)
+		return nil, fmt.Errorf("ошибка при получении автомобилей клиента: %w", err)
+	}
+
+	logger.Debug("Получено автомобилей: %d", len(cars))
+	return cars, nil
+}
+
 func (r *Repository) AddCarToClient(clientId int, car models.Car) error {
 	tx, err := r.db.Begin()
 	if err != nil {
+		logger.Error("Ошибка при начале транзакции: %v", err)
 		return fmt.Errorf("ошибка при начале транзакции: %w", err)
 	}
 	defer tx.Rollback()
 
+	// Создаем запись автомобиля
+	query := `
+		INSERT INTO cars (number, model, year, created_at, updated_at)
+		VALUES ($1, $2, $3, NOW(), NOW())
+		RETURNING id`
+
 	var carId int
-	// Проверяем, существует ли машина
-	err = tx.QueryRow("SELECT id FROM cars WHERE number = $1", car.Number).Scan(&carId)
+	err = tx.QueryRow(query, car.Number, car.Model, car.Year).Scan(&carId)
 	if err != nil {
-		// Если машина не существует, создаем новую
-		err = tx.QueryRow("INSERT INTO cars (number) VALUES ($1) RETURNING id", car.Number).Scan(&carId)
-		if err != nil {
-			logger.Error("Ошибка при создании новой машины: %v", err)
-			return fmt.Errorf("ошибка при создании новой машины: %w", err)
-		}
+		logger.Error("Ошибка при создании автомобиля: %v", err)
+		return fmt.Errorf("ошибка при создании автомобиля: %w", err)
 	}
 
-	// Добавляем связь клиент-машина
-	_, err = tx.Exec("INSERT INTO clients_cars (client_id, car_id) VALUES ($1, $2)", clientId, carId)
+	// Связываем автомобиль с клиентом
+	query = `
+		INSERT INTO clients_cars (client_id, car_id)
+		VALUES ($1, $2)`
+
+	_, err = tx.Exec(query, clientId, carId)
 	if err != nil {
-		logger.Error("Ошибка при добавлении машины клиенту: %v", err)
-		return fmt.Errorf("ошибка при добавлении машины клиенту: %w", err)
+		logger.Error("Ошибка при связывании автомобиля с клиентом: %v", err)
+		return fmt.Errorf("ошибка при связывании автомобиля с клиентом: %w", err)
 	}
 
 	if err = tx.Commit(); err != nil {
-		return fmt.Errorf("ошибка при коммите транзакции: %w", err)
+		logger.Error("Ошибка при завершении транзакции: %v", err)
+		return fmt.Errorf("ошибка при завершении транзакции: %w", err)
 	}
 
-	logger.Info("Машина успешно добавлена клиенту ID: %d", clientId)
+	logger.Info("Успешно добавлен автомобиль ID:%d клиенту ID:%d", carId, clientId)
 	return nil
 }
 

@@ -12,7 +12,7 @@ COPY . .
 # Собираем приложение
 RUN CGO_ENABLED=0 GOOS=linux go build -o main cmd/main.go
 
-FROM alpine:latest
+FROM alpine:3.19
 
 WORKDIR /app
 
@@ -21,8 +21,13 @@ COPY --from=builder /app/main .
 COPY --from=builder /app/configs ./configs
 COPY --from=builder /app/migrations ./migrations
 
-# Устанавливаем утилиту migrate
-RUN apk add --no-cache wget && \
+# Добавляем зеркала репозиториев и устанавливаем утилиту migrate
+RUN echo "https://dl-cdn.alpinelinux.org/alpine/v3.19/main" > /etc/apk/repositories && \
+    echo "https://dl-cdn.alpinelinux.org/alpine/v3.19/community" >> /etc/apk/repositories && \
+    echo "https://mirror.yandex.ru/mirrors/alpine/v3.19/main" >> /etc/apk/repositories && \
+    echo "https://mirror.yandex.ru/mirrors/alpine/v3.19/community" >> /etc/apk/repositories && \
+    apk update && \
+    apk add --no-cache wget && \
     wget https://github.com/golang-migrate/migrate/releases/download/v4.16.2/migrate.linux-amd64.tar.gz && \
     tar xvz -f migrate.linux-amd64.tar.gz && \
     mv migrate /usr/local/bin/migrate && \

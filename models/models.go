@@ -45,6 +45,8 @@ type ClientsCars struct {
 type Car struct {
 	ID        int       `json:"id" db:"id"`
 	Number    string    `json:"number" db:"number"`
+	Model     string    `json:"model" db:"model"`
+	Year      int       `json:"year" db:"year"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

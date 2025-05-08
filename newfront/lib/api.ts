@@ -279,7 +279,7 @@ export const servicesApi = {
 export const clientsApi = {
   // Получить всех клиентов
   getAll: async () => {
-    const response = await fetchWithAuth("/api/client")
+    const response = await fetchWithAuth("/api/manager/clients")
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить клиентов")
@@ -288,10 +288,13 @@ export const clientsApi = {
   },
 
   // Создать клиента
-  create: async (client) => {
-    const response = await fetchWithAuth("/api/client", {
+  create: async (data: { name: string; phone: string; client_type: string }) => {
+    const response = await fetchWithAuth("/api/manager/clients", {
       method: "POST",
-      body: JSON.stringify(client),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     })
     if (!response.ok) {
       const error = await response.json()
@@ -301,10 +304,13 @@ export const clientsApi = {
   },
 
   // Обновить клиента
-  update: async (id, client) => {
-    const response = await fetchWithAuth(`/api/client/${id}`, {
+  update: async (id: number, data: { name: string; phone: string; client_type: string }) => {
+    const response = await fetchWithAuth(`/api/manager/clients/${id}`, {
       method: "PUT",
-      body: JSON.stringify(client),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
     })
     if (!response.ok) {
       const error = await response.json()
@@ -314,13 +320,51 @@ export const clientsApi = {
   },
 
   // Удалить клиента
-  delete: async (id) => {
-    const response = await fetchWithAuth(`/api/client/${id}`, {
+  delete: async (id: number) => {
+    const response = await fetchWithAuth(`/api/manager/clients/${id}`, {
       method: "DELETE",
     })
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || "Не удалось удалить клиента")
+    }
+    return response.json()
+  },
+
+  // Получить автомобили клиента
+  getVehicles: async (clientId: number) => {
+    const response = await fetchWithAuth(`/api/manager/clients/${clientId}/vehicles`)
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить автомобили клиента")
+    }
+    return response.json()
+  },
+
+  // Добавить автомобиль клиенту
+  addVehicle: async (clientId: number, data: { number: string; model: string; year: number }) => {
+    const response = await fetchWithAuth(`/api/manager/clients/${clientId}/vehicles`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось добавить автомобиль")
+    }
+    return response.json()
+  },
+
+  // Удалить автомобиль клиента
+  deleteVehicle: async (clientId: number, vehicleId: number) => {
+    const response = await fetchWithAuth(`/api/manager/clients/${clientId}/vehicles/${vehicleId}`, {
+      method: "DELETE",
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось удалить автомобиль")
     }
     return response.json()
   },

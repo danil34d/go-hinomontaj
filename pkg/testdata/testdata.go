@@ -197,8 +197,10 @@ func (g *TestDataGenerator) createTestClientsAndCars() error {
 		// Добавляем машину клиенту
 		car := models.Car{
 			Number: cars[i],
+			Model:  "Toyota Camry",
+			Year:   2020,
 		}
-		err = g.services.Client.AddCar(clientID, car)
+		err = g.services.Client.AddCarToClient(clientID, car)
 		if err != nil {
 			logger.Error("Ошибка при добавлении машины %s клиенту %s: %v", car.Number, client.Name, err)
 			return err
