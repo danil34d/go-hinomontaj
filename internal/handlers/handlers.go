@@ -70,6 +70,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	{
 		worker.GET("", h.GetMyOrders)
 		worker.POST("", h.CreateOrder)
+		worker.GET("/statistics", h.GetWorkerStatistics)
 	}
 
 	manager := api.Group("/manager")
@@ -747,4 +748,27 @@ func (h *Handler) CreateClientCar(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, gin.H{"message": "Автомобиль успешно добавлен"})
+}
+
+func (h *Handler) GetWorkerStatistics(c *gin.Context) {
+	userId, _ := c.Get("userId")
+	logger.Debug("Получен запрос на получение статистики работника user_id:%v", userId)
+
+	// Получаем worker_id из user_id
+	worker, err := h.services.Worker.GetByUserId(userId.(int))
+	if err != nil {
+		logger.Error("Ошибка при получении данных работника: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
+		return
+	}
+
+	stats, err := h.services.Worker.GetStatistics(worker.ID)
+	if err != nil {
+		logger.Error("Ошибка при получении статистики работника: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Debug("Успешно получена статистика для работника ID:%v", worker.ID)
+	c.JSON(http.StatusOK, stats)
 }

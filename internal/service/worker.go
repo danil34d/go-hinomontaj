@@ -15,6 +15,7 @@ type WorkerService interface {
 	Update(id int, worker models.Worker) error
 	Delete(id int) error
 	GetByUserId(userId int) (models.Worker, error)
+	GetStatistics(workerId int) (models.WorkerStatistics, error)
 }
 
 type WorkerServiceImpl struct {
@@ -83,4 +84,9 @@ func (s *WorkerServiceImpl) Delete(id int) error {
 func (s *WorkerServiceImpl) GetByUserId(userId int) (models.Worker, error) {
 	logger.Debug("Получение данных работника по user_id: %d", userId)
 	return s.repo.GetWorkerByUserId(userId)
+}
+
+func (s *WorkerServiceImpl) GetStatistics(workerId int) (models.WorkerStatistics, error) {
+	logger.Debug("Получение статистики для работника ID:%d", workerId)
+	return s.repo.GetWorkerStatistics(workerId)
 }

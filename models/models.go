@@ -105,3 +105,13 @@ type Statistics struct {
 	TotalClients      int     `json:"total_clients"`
 	AverageOrderValue float64 `json:"average_order_value"`
 }
+
+type WorkerStatistics struct {
+	TotalOrders       int       `json:"total_orders" db:"total_orders"`
+	TotalOrdersToday  int       `json:"total_orders_today" db:"total_orders_today"`
+	TotalOrdersMonth  int       `json:"total_orders_month" db:"total_orders_month"`
+	TotalRevenue      float64   `json:"total_revenue" db:"total_revenue"`
+	TotalRevenueToday float64   `json:"total_revenue_today" db:"total_revenue_today"`
+	TotalRevenueMonth float64   `json:"total_revenue_month" db:"total_revenue_month"`
+	LastOrder         time.Time `json:"last_order" db:"last_order"`
+}

@@ -697,3 +697,35 @@ func (r *Repository) GetWorkerByUserId(userId int) (models.Worker, error) {
 	logger.Debug("Работник найден: %v", worker)
 	return worker, nil
 }
+
+func (r *Repository) GetWorkerStatistics(workerId int) (models.WorkerStatistics, error) {
+	var stats models.WorkerStatistics
+
+	// Получаем общую статистику и последний заказ
+	err := r.db.Get(&stats, `
+		SELECT 
+			COUNT(*) as total_orders,
+			COALESCE(SUM(total_amount), 0) as total_revenue,
+			MAX(created_at) as last_order,
+			(SELECT COUNT(*) FROM orders 
+			 WHERE worker_id = $1 
+			 AND DATE(created_at) = CURRENT_DATE) as total_orders_today,
+			(SELECT COALESCE(SUM(total_amount), 0) FROM orders 
+			 WHERE worker_id = $1 
+			 AND DATE(created_at) = CURRENT_DATE) as total_revenue_today,
+			(SELECT COUNT(*) FROM orders 
+			 WHERE worker_id = $1 
+			 AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)) as total_orders_month,
+			(SELECT COALESCE(SUM(total_amount), 0) FROM orders 
+			 WHERE worker_id = $1 
+			 AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)) as total_revenue_month
+		FROM orders
+		WHERE worker_id = $1`, workerId)
+	if err != nil {
+		logger.Error("Ошибка при получении статистики работника: %v", err)
+		return models.WorkerStatistics{}, fmt.Errorf("ошибка при получении статистики: %w", err)
+	}
+
+	logger.Info("Статистика успешно получена для работника ID:%d", workerId)
+	return stats, nil
+}

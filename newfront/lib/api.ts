@@ -131,6 +131,16 @@ export const statisticsApi = {
     }
     return response.json()
   },
+
+  // Получить статистику работника
+  getWorkerStats: async () => {
+    const response = await fetchWithAuth("/api/worker/statistics")
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить статистику")
+    }
+    return response.json()
+  },
 }
 
 // API для работы с сотрудниками (для менеджера)
