@@ -678,3 +678,22 @@ func (r *Repository) GetWorkerByName(name string) (models.Worker, error) {
 	logger.Debug("Работник найден: %+v", worker)
 	return worker, nil
 }
+
+func (r *Repository) GetWorkerByUserId(userId int) (models.Worker, error) {
+	var worker models.Worker
+	query := `
+		SELECT w.id, w.name, w.surname, w.salary, w.created_at, w.updated_at
+		FROM workers w
+		JOIN users u ON w.name = u.name
+		WHERE u.id = $1`
+
+	logger.Debug("Поиск работника по user_id: %d", userId)
+	err := r.db.Get(&worker, query, userId)
+	if err != nil {
+		logger.Error("Ошибка при получении работника по user_id: %v", err)
+		return models.Worker{}, fmt.Errorf("ошибка при получении работника: %w", err)
+	}
+
+	logger.Debug("Работник найден: %v", worker)
+	return worker, nil
+}

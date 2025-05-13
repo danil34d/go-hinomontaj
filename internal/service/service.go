@@ -45,6 +45,7 @@ type Worker interface {
 	GetById(id int) (models.Worker, error)
 	Update(id int, worker models.Worker) error
 	Delete(id int) error
+	GetByUserId(userId int) (models.Worker, error)
 }
 
 type Client interface {
@@ -85,6 +86,7 @@ type Repository interface {
 	GetAllWorkers() ([]models.Worker, error)
 	GetWorkerByName(name string) (models.Worker, error)
 	GetWorkerById(id int) (models.Worker, error)
+	GetWorkerByUserId(userId int) (models.Worker, error)
 	UpdateWorker(id int, worker models.Worker) error
 	DeleteWorker(id int) error
 

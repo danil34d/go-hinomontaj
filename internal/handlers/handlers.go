@@ -239,8 +239,16 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		}
 	}
 
-	workerId, _ := c.Get("userId")
-	input.WorkerID = workerId.(int)
+	// Получаем worker_id из контекста
+	userId, _ := c.Get("userId")
+	worker, err := h.services.Worker.GetByUserId(userId.(int))
+	if err != nil {
+		logger.Error("Ошибка при получении данных работника: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
+		return
+	}
+
+	input.WorkerID = worker.ID
 
 	id, err := h.services.Order.Create(input)
 	if err != nil {
@@ -249,7 +257,7 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	logger.Info("Успешно создан заказ ID:%d работником ID:%d", id, workerId)
+	logger.Info("Успешно создан заказ ID:%d работником ID:%d", id, worker.ID)
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
