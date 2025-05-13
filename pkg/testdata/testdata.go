@@ -170,20 +170,51 @@ func (g *TestDataGenerator) createTestClientsAndCars() error {
 
 	clients := []models.Client{
 		{
-			Name:       "ООО \"Автопарк\"",
-			ClientType: "company",
+			Name:       "ИП Иванов",
+			ClientType: "НАЛИЧКА",
 		},
 		{
-			Name:       "Иван Петрович",
-			ClientType: "individual",
+			Name:       "ООО \"ТрансЛогистик\"",
+			ClientType: "КОНТРАГЕНТЫ",
 		},
 		{
-			Name:       "АО \"Транспорт\"",
-			ClientType: "company",
+			Name:       "ООО \"АвтоПарк\"",
+			ClientType: "КОНТРАГЕНТЫ",
+		},
+		{
+			Name:       "Яндекс.Такси",
+			ClientType: "АГРЕГАТОРЫ",
+		},
+		{
+			Name:       "Ситимобил",
+			ClientType: "АГРЕГАТОРЫ",
 		},
 	}
 
-	cars := []string{"А123БВ777", "В321ГД999", "Е567ЖЗ777"}
+	// Номера для тестовых машин
+	cars := [][]models.Car{
+		{ // Для ИП Иванов
+			{Number: "А123БВ777", Model: "КАМАЗ 5490", Year: 2020},
+			{Number: "В234ГД777", Model: "MAN TGX", Year: 2021},
+		},
+		{ // Для ТрансЛогистик
+			{Number: "Е345ЖЗ777", Model: "Volvo FH", Year: 2019},
+			{Number: "К456ЛМ777", Model: "Scania R500", Year: 2022},
+			{Number: "Н567ПР777", Model: "Mercedes Actros", Year: 2021},
+		},
+		{ // Для АвтоПарк
+			{Number: "С678ТУ777", Model: "DAF XF", Year: 2020},
+			{Number: "Х789ЦЧ777", Model: "КАМАЗ 54901", Year: 2022},
+		},
+		{ // Для Яндекс.Такси
+			{Number: "Ш890ЩЭ777", Model: "Volvo FH16", Year: 2021},
+			{Number: "Ю901ЯА777", Model: "MAN TGS", Year: 2020},
+		},
+		{ // Для Ситимобил
+			{Number: "А012БВ777", Model: "Scania S730", Year: 2022},
+			{Number: "Г234ДЕ777", Model: "Mercedes Arocs", Year: 2021},
+		},
+	}
 
 	for i, client := range clients {
 		// Создаем клиента
@@ -194,18 +225,15 @@ func (g *TestDataGenerator) createTestClientsAndCars() error {
 		}
 		logger.Info("Создан тестовый клиент: %s", client.Name)
 
-		// Добавляем машину клиенту
-		car := models.Car{
-			Number: cars[i],
-			Model:  "Toyota Camry",
-			Year:   2020,
+		// Добавляем машины клиенту
+		for _, car := range cars[i] {
+			err = g.services.Client.AddCarToClient(clientID, car)
+			if err != nil {
+				logger.Error("Ошибка при добавлении машины %s клиенту %s: %v", car.Number, client.Name, err)
+				return err
+			}
+			logger.Info("Добавлена машина %s клиенту %s", car.Number, client.Name)
 		}
-		err = g.services.Client.AddCarToClient(clientID, car)
-		if err != nil {
-			logger.Error("Ошибка при добавлении машины %s клиенту %s: %v", car.Number, client.Name, err)
-			return err
-		}
-		logger.Info("Добавлена машина %s клиенту %s", car.Number, client.Name)
 	}
 
 	return nil
@@ -215,46 +243,47 @@ func (g *TestDataGenerator) createTestClientsAndCars() error {
 func (g *TestDataGenerator) createTestServices() error {
 	logger.Info("Создание тестовых услуг")
 
-	services := []models.Service{
-		{
-			Name:       "Замена колеса",
-			ClientType: "individual",
-			Price:      1000,
-		},
-		{
-			Name:       "Замена колеса",
-			ClientType: "company",
-			Price:      800,
-		},
-		{
-			Name:       "Балансировка",
-			ClientType: "individual",
-			Price:      500,
-		},
-		{
-			Name:       "Балансировка",
-			ClientType: "company",
-			Price:      400,
-		},
-		{
-			Name:       "Ремонт прокола",
-			ClientType: "individual",
-			Price:      300,
-		},
-		{
-			Name:       "Ремонт прокола",
-			ClientType: "company",
-			Price:      250,
-		},
+	// Базовые цены для типа НАЛИЧКА
+	baseServices := map[string]int{
+		"Снятие колеса одиночка":          300,
+		"Установка колеса одиночка":       300,
+		"Демонтаж резины с диска":         300,
+		"Монтаж установка резины на диск": 300,
+		"Снятие спарка":                   350,
+		"Установка спарка":                350,
+		"Протяжка колесных гаек 1 колесо": 150,
+		"Подкачка 1 колеса":               50,
+		"Балансировка 1 колеса":           700,
+		"Установка заплаты р13":           900,
+		"Установка заплаты р15":           1000,
+		"Установка заплаты р19, р20, р23": 1300,
+		"Установка заплаты р25":           1800,
+		"Установка заплаты RS-25":         2300,
 	}
 
-	for _, service := range services {
-		_, err := g.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка при создании тестовой услуги %s для %s: %v", service.Name, service.ClientType, err)
-			return err
+	// Коэффициенты для разных типов клиентов
+	priceCoefficients := map[string]float64{
+		"НАЛИЧКА":     1.0,
+		"КОНТРАГЕНТЫ": 0.9,  // 10% скидка
+		"АГРЕГАТОРЫ":  0.85, // 15% скидка
+	}
+
+	// Создаем услуги для каждого типа клиентов
+	for serviceName, basePrice := range baseServices {
+		for clientType, coefficient := range priceCoefficients {
+			service := models.Service{
+				Name:       serviceName,
+				ClientType: clientType,
+				Price:      int(float64(basePrice) * coefficient),
+			}
+
+			_, err := g.services.Service.Create(service)
+			if err != nil {
+				logger.Error("Ошибка при создании услуги %s для типа клиента %s: %v", serviceName, clientType, err)
+				return err
+			}
+			logger.Info("Создана услуга: %s для типа клиента %s с ценой %d", serviceName, clientType, service.Price)
 		}
-		logger.Info("Создана тестовая услуга: %s для %s", service.Name, service.ClientType)
 	}
 
 	return nil
