@@ -55,6 +55,7 @@ type Order struct {
 	ID            int            `json:"id" db:"id"`
 	WorkerID      int            `json:"worker_id" db:"worker_id"`
 	ClientID      int            `json:"client_id" db:"client_id"`
+	Client        *Client        `json:"client" db:"-"`
 	VehicleNumber string         `json:"vehicle_number" db:"vehicle_number"`
 	PaymentMethod string         `json:"payment_method" db:"payment_method"`
 	TotalAmount   float64        `json:"total_amount" db:"total_amount"`

@@ -23,11 +23,35 @@ import {
 } from "@/components/ui/alert-dialog"
 import { Badge } from "@/components/ui/badge"
 
+interface Client {
+  id: number
+  name: string
+  client_type: string
+  car_numbers: string[]
+}
+
+interface OrderService {
+  service_id: number
+  service_description: string
+  wheel_position: string
+  price: number
+}
+
+interface Order {
+  id: number
+  client?: Client
+  vehicle_number: string
+  payment_method: string
+  total_amount: number
+  services: OrderService[]
+  created_at: string
+}
+
 export default function WorkerOrdersPage() {
-  const [orders, setOrders] = useState([])
+  const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const { toast } = useToast()
@@ -41,24 +65,26 @@ export default function WorkerOrdersPage() {
       setLoading(true)
       const data = await ordersApi.getMyOrders()
       setOrders(data || [])
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Ошибка при загрузке заказов:", error)
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Неизвестная ошибка",
       })
     } finally {
       setLoading(false)
     }
   }
 
-  const handleEdit = (order) => {
+  const handleEdit = (order: Order) => {
     setSelectedOrder(order)
     setIsDialogOpen(true)
   }
 
   const handleDelete = async () => {
+    if (!selectedOrder) return
+
     try {
       await ordersApi.delete(selectedOrder.id)
       toast({
@@ -66,12 +92,12 @@ export default function WorkerOrdersPage() {
         description: "Заказ успешно удален",
       })
       fetchOrders()
-    } catch (error) {
+    } catch (error: unknown) {
       console.error("Ошибка при удалении заказа:", error)
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error.message,
+        description: error instanceof Error ? error.message : "Неизвестная ошибка",
       })
     } finally {
       setIsDeleteDialogOpen(false)
@@ -79,20 +105,20 @@ export default function WorkerOrdersPage() {
     }
   }
 
-  const filteredOrders = orders?.filter((order) => {
+  const filteredOrders = orders.filter((order) => {
     const searchLower = searchQuery.toLowerCase()
     const clientName = order.client?.name?.toLowerCase() || ""
     const vehicleNumber = order.vehicle_number?.toLowerCase() || ""
-    const services = order.services?.map(s => s.name?.toLowerCase() || "").join(" ") || ""
+    const services = order.services?.map(s => s.service_description?.toLowerCase() || "").join(" ") || ""
 
     return (
       clientName.includes(searchLower) ||
       vehicleNumber.includes(searchLower) ||
       services.includes(searchLower)
     )
-  }) || []
+  })
 
-  const getPaymentMethodText = (method) => {
+  const getPaymentMethodText = (method: string): string => {
     switch (method) {
       case "cash":
         return "Наличные"
@@ -146,6 +172,7 @@ export default function WorkerOrdersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Клиент</TableHead>
+                  <TableHead>Тип клиента</TableHead>
                   <TableHead>Автомобиль</TableHead>
                   <TableHead>Услуги</TableHead>
                   <TableHead>Сумма</TableHead>
@@ -157,18 +184,43 @@ export default function WorkerOrdersPage() {
               <TableBody>
                 {filteredOrders.map((order) => (
                   <TableRow key={order.id}>
-                    <TableCell>{order.client?.name || "Н/Д"}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{order.client?.name || "Н/Д"}</span>
+                        <span className="text-sm text-muted-foreground">
+                          {order.client?.car_numbers?.join(", ") || "Нет автомобилей"}
+                        </span>
+                      </div>
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline">
+                        {order.client?.client_type || "Н/Д"}
+                      </Badge>
+                    </TableCell>
                     <TableCell>{order.vehicle_number}</TableCell>
                     <TableCell>
-                      <div className="flex flex-wrap gap-1">
+                      <div className="flex flex-col gap-1">
                         {order.services?.map((service) => (
-                          <Badge key={`${order.id}-${service.id}`} variant="secondary">
-                            {service.name}
-                          </Badge>
+                          <div key={`${order.id}-${service.service_id}`} className="flex items-center gap-1">
+                            <Badge variant="secondary">
+                              {service.service_description}
+                            </Badge>
+                            <span className="text-sm text-muted-foreground">
+                              {service.wheel_position && `(${service.wheel_position})`}
+                            </span>
+                            <span className="text-sm">{service.price} ₽</span>
+                          </div>
                         ))}
                       </div>
                     </TableCell>
-                    <TableCell>{order.total_amount} ₽</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col">
+                        <span className="font-medium">{order.total_amount} ₽</span>
+                        <span className="text-sm text-muted-foreground">
+                          {getPaymentMethodText(order.payment_method)}
+                        </span>
+                      </div>
+                    </TableCell>
                     <TableCell>{getPaymentMethodText(order.payment_method)}</TableCell>
                     <TableCell>
                       {formatDistanceToNow(new Date(order.created_at), {

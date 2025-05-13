@@ -179,13 +179,32 @@ func (h *Handler) GetMyOrders(c *gin.Context) {
 	workerId, _ := c.Get("userId")
 	logger.Debug("Получен запрос на получение заказов работника ID:%v", workerId)
 
-	orders, err := h.services.Order.GetByWorkerId(workerId.(int))
+	// Получаем worker_id из user_id
+	worker, err := h.services.Worker.GetByUserId(workerId.(int))
+	if err != nil {
+		logger.Error("Ошибка при получении данных работника: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
+		return
+	}
+
+	orders, err := h.services.Order.GetByWorkerId(worker.ID)
 	if err != nil {
 		logger.Error("Ошибка при получении заказов работника: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	logger.Debug("Успешно получено %d заказов для работника ID:%v", len(orders), workerId)
+
+	// Для каждого заказа получаем информацию о клиенте
+	for i := range orders {
+		client, err := h.services.Client.GetById(orders[i].ClientID)
+		if err != nil {
+			logger.Error("Ошибка при получении данных клиента для заказа %d: %v", orders[i].ID, err)
+			continue
+		}
+		orders[i].Client = &client
+	}
+
+	logger.Debug("Успешно получено %d заказов для работника ID:%v", len(orders), worker.ID)
 	c.JSON(http.StatusOK, orders)
 }
 
