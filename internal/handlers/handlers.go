@@ -259,16 +259,26 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		}
 	}
 
-	// Получаем worker_id из контекста
-	userId, _ := c.Get("userId")
-	worker, err := h.services.Worker.GetByUserId(userId.(int))
-	if err != nil {
-		logger.Error("Ошибка при получении данных работника: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
-		return
+	// Проверяем роль пользователя
+	userRole, _ := c.Get("userRole")
+	if userRole == "worker" {
+		// Если заказ создает работник, берем его ID из контекста
+		userId, _ := c.Get("userId")
+		worker, err := h.services.Worker.GetByUserId(userId.(int))
+		if err != nil {
+			logger.Error("Ошибка при получении данных работника: %v", err)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
+			return
+		}
+		input.WorkerID = worker.ID
+	} else {
+		// Если заказ создает менеджер, worker_id должен быть указан в запросе
+		if input.WorkerID == 0 {
+			logger.Warning("Не указан ID работника")
+			c.JSON(http.StatusBadRequest, gin.H{"error": "не указан ID работника"})
+			return
+		}
 	}
-
-	input.WorkerID = worker.ID
 
 	id, err := h.services.Order.Create(input)
 	if err != nil {
@@ -277,7 +287,7 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-	logger.Info("Успешно создан заказ ID:%d работником ID:%d", id, worker.ID)
+	logger.Info("Успешно создан заказ ID:%d работником ID:%d", id, input.WorkerID)
 	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 

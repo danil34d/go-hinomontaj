@@ -685,17 +685,10 @@ func (r *Repository) GetWorkerByUserId(userId int) (models.Worker, error) {
 		SELECT w.id, w.name, w.surname, w.salary, w.created_at, w.updated_at
 		FROM workers w
 		JOIN users u ON w.name = u.name
-		WHERE u.id = $1`
-
-	logger.Debug("Поиск работника по user_id: %d", userId)
+		WHERE u.id = $1
+	`
 	err := r.db.Get(&worker, query, userId)
-	if err != nil {
-		logger.Error("Ошибка при получении работника по user_id: %v", err)
-		return models.Worker{}, fmt.Errorf("ошибка при получении работника: %w", err)
-	}
-
-	logger.Debug("Работник найден: %v", worker)
-	return worker, nil
+	return worker, err
 }
 
 func (r *Repository) GetWorkerStatistics(workerId int) (models.WorkerStatistics, error) {
