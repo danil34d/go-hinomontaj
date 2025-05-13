@@ -12,6 +12,7 @@ interface ServiceEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   service: {
+    id: number
     name: string
     prices: Record<string, number>
   }

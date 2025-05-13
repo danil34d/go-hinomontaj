@@ -83,6 +83,7 @@ type Repository interface {
 	// Workers
 	CreateWorker(worker models.Worker) (int, error) // с аккаунта админа
 	GetAllWorkers() ([]models.Worker, error)
+	GetWorkerByName(name string) (models.Worker, error)
 	GetWorkerById(id int) (models.Worker, error)
 	UpdateWorker(id int, worker models.Worker) error
 	DeleteWorker(id int) error

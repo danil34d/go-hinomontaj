@@ -63,6 +63,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 
 	api.GET("/services", h.GetServices)
 	api.GET("/client-types", h.clientTypes)
+	api.GET("/clients", h.GetClient)
 
 	worker := api.Group("/worker")
 	worker.Use(h.workerRoleMiddleware)
@@ -437,20 +438,23 @@ func (h *Handler) GetServices(c *gin.Context) {
 	}
 
 	// Группируем услуги по имени
-	groupedServices := make(map[string]map[string]int)
+	groupedServices := make(map[string]map[string]interface{})
 	for _, service := range services {
 		if _, exists := groupedServices[service.Name]; !exists {
-			groupedServices[service.Name] = make(map[string]int)
+			groupedServices[service.Name] = make(map[string]interface{})
+			groupedServices[service.Name]["id"] = service.ID
+			groupedServices[service.Name]["prices"] = make(map[string]int)
 		}
-		groupedServices[service.Name][service.ClientType] = service.Price
+		groupedServices[service.Name]["prices"].(map[string]int)[service.ClientType] = service.Price
 	}
 
 	// Преобразуем в массив для ответа
 	var result []map[string]interface{}
-	for name, prices := range groupedServices {
+	for name, data := range groupedServices {
 		result = append(result, map[string]interface{}{
+			"id":     data["id"],
 			"name":   name,
-			"prices": prices,
+			"prices": data["prices"],
 		})
 	}
 

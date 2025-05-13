@@ -71,11 +71,12 @@ export const ordersApi = {
       },
       body: JSON.stringify({
         client_id: data.client_id,
+        worker_id: data.worker_id,
         vehicle_number: data.vehicle_number,
         payment_method: data.payment_method,
         description: data.description,
-        service_ids: data.service_ids,
         total_amount: data.total_amount,
+        services: data.services,
       }),
     })
 
@@ -217,15 +218,21 @@ export const clientTypesApi = {
 // API для работы с услугами (для менеджера)
 export const servicesApi = {
   getAll: async () => {
-    const response = await fetch(`${API_BASE_URL}/api/manager/services`, {
-      headers: {
-        'Authorization': `Bearer ${localStorage.getItem('token')}`,
-      },
-    });
+    const response = await fetchWithAuth("/api/services")
     if (!response.ok) {
-      throw new Error('Не удалось получить список услуг');
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить список услуг")
     }
-    return response.json();
+    return response.json()
+  },
+
+  getWorkerServices: async () => {
+    const response = await fetchWithAuth("/api/services")
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить список услуг")
+    }
+    return response.json()
   },
 
   create: async (data: { name: string; prices: Record<string, number> }) => {
@@ -279,7 +286,17 @@ export const servicesApi = {
 export const clientsApi = {
   // Получить всех клиентов
   getAll: async () => {
-    const response = await fetchWithAuth("/api/manager/clients")
+    const response = await fetchWithAuth("/api/clients")
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить клиентов")
+    }
+    return response.json()
+  },
+
+  // Получить всех клиентов (для работника)
+  getWorkerClients: async () => {
+    const response = await fetchWithAuth("/api/clients")
     if (!response.ok) {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить клиентов")

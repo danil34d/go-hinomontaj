@@ -33,7 +33,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     vehicle_number: "",
     payment_method: "cash",
     description: "",
-    service_ids: [] as string[],
+    service_ids: [] as number[],
   })
 
   const [totalAmount, setTotalAmount] = useState(0)
@@ -49,7 +49,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
           vehicle_number: order.vehicle_number || "",
           payment_method: order.payment_method || "cash",
           description: order.description || "",
-          service_ids: order.services?.map(service => service.service_id?.toString() || "") || [],
+          service_ids: order.services?.map(service => service.service_id) || [],
         })
       } else {
         setFormData({
@@ -78,11 +78,40 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
   useEffect(() => {
     // Пересчитываем общую сумму при изменении выбранных услуг или типа клиента
+    console.log("Пересчет общей суммы. Выбранные услуги:", formData.service_ids)
+    console.log("Доступные услуги:", services)
+    console.log("Тип клиента:", selectedClientType)
+    
     const total = formData.service_ids.reduce((sum, serviceId) => {
-      const service = services.find(s => s.name === serviceId)
-      if (!service || !selectedClientType) return sum
-      return sum + (service.prices[selectedClientType] || 0)
+      const service = services.find(s => s.id === serviceId)
+      console.log("Поиск услуги по ID:", serviceId, "Найдена:", service)
+      
+      if (!service) {
+        console.warn(`Не найдена услуга с ID ${serviceId}`)
+        return sum
+      }
+      
+      if (!selectedClientType) {
+        console.warn("Не выбран тип клиента")
+        return sum
+      }
+      
+      const price = service.prices[selectedClientType]
+      if (price === undefined || price === null) {
+        console.warn(`Не найдена цена для услуги ${serviceId} и типа клиента ${selectedClientType}`)
+        return sum
+      }
+      
+      if (typeof price !== 'number' || isNaN(price)) {
+        console.warn(`Некорректная цена для услуги ${serviceId}: ${price}`)
+        return sum
+      }
+      
+      console.log(`Добавляем цену услуги ${serviceId} для типа клиента ${selectedClientType}: ${price}`)
+      return sum + price
     }, 0)
+    
+    console.log("Итоговая сумма:", total)
     setTotalAmount(total)
   }, [formData.service_ids, services, selectedClientType])
 
@@ -148,19 +177,57 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
-  const handleServiceSelect = (serviceName: string) => {
-    if (!serviceName) return;
-    setFormData(prev => ({
-      ...prev,
-      service_ids: [...prev.service_ids, serviceName]
-    }))
+  const handleServiceSelect = (serviceId: string) => {
+    const serviceIdNum = parseInt(serviceId)
+    console.log("Выбрана услуга с ID:", serviceIdNum)
+    
+    if (!selectedClientType) {
+      toast({
+        title: "Ошибка",
+        description: "Сначала выберите клиента",
+        variant: "destructive"
+      })
+      return
+    }
+    
+    const service = services.find(s => s.id === serviceIdNum)
+    if (!service) {
+      console.warn(`Не найдена услуга с ID ${serviceIdNum}`)
+      return
+    }
+    
+    const price = service.prices[selectedClientType]
+    if (price === undefined || price === null) {
+      toast({
+        title: "Ошибка",
+        description: `Для выбранного типа клиента нет цены на услугу "${service.name}"`,
+        variant: "destructive"
+      })
+      return
+    }
+    
+    if (typeof price !== 'number' || isNaN(price)) {
+      toast({
+        title: "Ошибка",
+        description: `Некорректная цена для услуги "${service.name}"`,
+        variant: "destructive"
+      })
+      return
+    }
+    
+    if (!formData.service_ids.includes(serviceIdNum)) {
+      setFormData(prev => ({
+        ...prev,
+        service_ids: [...prev.service_ids, serviceIdNum]
+      }))
+    }
   }
 
-  const handleRemoveService = (serviceName: string) => {
-    if (!serviceName) return;
+  const handleRemoveService = (serviceId: number) => {
+    console.log("Удаление услуги с ID:", serviceId)
     setFormData(prev => ({
       ...prev,
-      service_ids: prev.service_ids.filter(name => name !== serviceName)
+      service_ids: prev.service_ids.filter(id => id !== serviceId)
     }))
   }
 
@@ -192,16 +259,20 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
         vehicle_number: formData.vehicle_number,
         payment_method: formData.payment_method,
         total_amount: totalAmount,
-        services: formData.service_ids.map(serviceName => {
-          const service = services.find(s => s.name === serviceName)
+        services: formData.service_ids.map(serviceId => {
+          const service = services.find(s => s.id === serviceId)
           if (!service) {
-            throw new Error(`Услуга ${serviceName} не найдена`)
+            throw new Error(`Услуга ${serviceId} не найдена`)
+          }
+          const price = service.prices[selectedClientType]
+          if (price === undefined || price === null) {
+            throw new Error(`Для услуги ${service.name} не найдена цена для типа клиента ${selectedClientType}`)
           }
           return {
             service_id: service.id,
             service_description: service.name,
             wheel_position: "all",
-            price: service.prices[selectedClientType] || 0
+            price: price
           }
         })
       }
@@ -318,33 +389,37 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   </SelectTrigger>
                   <SelectContent>
                     {services
-                      .filter(service => !formData.service_ids.includes(service.name))
+                      .filter(service => !formData.service_ids.includes(service.id))
                       .map((service) => (
-                        <SelectItem key={service.name} value={service.name}>
+                        <SelectItem key={service.id} value={service.id.toString()}>
                           {service.name} - {service.prices[selectedClientType] || 0} ₽
                         </SelectItem>
                       ))}
                   </SelectContent>
                 </Select>
 
-                <div className="flex flex-wrap gap-2">
-                  {formData.service_ids.map((serviceName, index) => {
-                    const service = services.find(s => s.name === serviceName)
-                    return service ? (
-                      <Badge key={`${service.name}-${index}`} variant="secondary" className="flex items-center gap-1">
-                        {service.name} - {service.prices[selectedClientType] || 0} ₽
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          className="h-4 w-4 p-0"
-                          onClick={() => handleRemoveService(serviceName)}
-                        >
-                          <X className="h-3 w-3" />
-                        </Button>
-                      </Badge>
-                    ) : null
-                  })}
+                <div className="space-y-2">
+                  <Label>Выбранные услуги</Label>
+                  <div className="space-y-2">
+                    {formData.service_ids.map((serviceId) => {
+                      const service = services.find(s => s.id === serviceId)
+                      return service ? (
+                        <div key={serviceId} className="flex items-center justify-between rounded-lg border p-3">
+                          <div>
+                            <span className="font-medium">{service.name}</span>
+                            <span className="ml-2 text-sm text-muted-foreground">{service.prices[selectedClientType] || 0} ₽</span>
+                          </div>
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => handleRemoveService(serviceId)}
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      ) : null
+                    })}
+                  </div>
                 </div>
               </div>
             </div>

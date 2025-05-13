@@ -43,7 +43,7 @@ func (s *AuthServiceImpl) Register(input models.SignUpInput) (string, models.Use
 		Name:     input.Name,
 		Email:    input.Email,
 		Password: string(hashedPassword),
-		Role:     input.Role, // Используем роль из входных данных
+		Role:     input.Role,
 	}
 
 	// Сохраняем пользователя в базу
@@ -58,6 +58,23 @@ func (s *AuthServiceImpl) Register(input models.SignUpInput) (string, models.Use
 	if err != nil {
 		logger.Error("Ошибка получения созданного пользователя: %v", err)
 		return "", models.User{}, err
+	}
+
+	// Если пользователь работник, создаем запись в таблице workers
+	if user.Role == "worker" {
+		logger.Debug("Создание записи в таблице workers для пользователя %s", user.Email)
+		worker := models.Worker{
+			Name:    user.Name,
+			Surname: "", // Пока оставляем пустым, можно добавить в форму регистрации
+			Salary:  0,  // Начальная зарплата
+		}
+		workerId, err := s.repo.CreateWorker(worker)
+		if err != nil {
+			logger.Error("Ошибка создания записи работника: %v", err)
+			return "", models.User{}, err
+		}
+		user.WorkerID = workerId
+		logger.Debug("Создана запись работника с ID: %d", workerId)
 	}
 
 	// Генерируем JWT токен
@@ -96,6 +113,18 @@ func (s *AuthServiceImpl) Login(input models.SignInInput) (string, models.User, 
 
 	logger.Debug("Пароль верный для пользователя: %s", user.Email)
 
+	// Если пользователь работник, получаем его worker_id
+	if user.Role == "worker" {
+		logger.Debug("Получение worker_id для пользователя %s", user.Email)
+		worker, err := s.repo.GetWorkerByName(user.Name)
+		if err != nil {
+			logger.Error("Ошибка получения worker_id для пользователя %s: %v", user.Email, err)
+			return "", models.User{}, err
+		}
+		user.WorkerID = worker.ID
+		logger.Debug("Получен worker_id=%d для пользователя %s", worker.ID, user.Email)
+	}
+
 	// Генерируем JWT токен
 	token, err := s.generateToken(user)
 	if err != nil {
@@ -103,7 +132,7 @@ func (s *AuthServiceImpl) Login(input models.SignInInput) (string, models.User, 
 		return "", models.User{}, err
 	}
 
-	logger.Info("Успешный вход пользователя: %s, роль: %s", user.Email, user.Role)
+	logger.Info("Успешный вход пользователя: %s, роль: %s, worker_id: %d", user.Email, user.Role, user.WorkerID)
 	return token, user, nil
 }
 
@@ -111,10 +140,11 @@ func (s *AuthServiceImpl) generateToken(user models.User) (string, error) {
 	logger.Debug("Генерация токена для пользователя: %s", user.Email)
 
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
-		"user_id": user.ID,
-		"email":   user.Email,
-		"role":    user.Role,
-		"exp":     time.Now().Add(24 * time.Hour).Unix(),
+		"user_id":   user.ID,
+		"email":     user.Email,
+		"role":      user.Role,
+		"worker_id": user.WorkerID,
+		"exp":       time.Now().Add(24 * time.Hour).Unix(),
 	})
 
 	tokenString, err := token.SignedString([]byte(s.signingKey))

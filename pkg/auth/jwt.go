@@ -15,18 +15,20 @@ const (
 
 type TokenClaims struct {
 	jwt.StandardClaims
-	UserId int    `json:"user_id"`
-	Role   string `json:"role"`
+	UserId   int    `json:"user_id"`
+	Role     string `json:"role"`
+	WorkerID int    `json:"worker_id"`
 }
 
-func GenerateToken(userId int, role string) (string, error) {
+func GenerateToken(userId int, role string, workerId int) (string, error) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, &TokenClaims{
 		StandardClaims: jwt.StandardClaims{
 			ExpiresAt: time.Now().Add(tokenTTL).Unix(),
 			IssuedAt:  time.Now().Unix(),
 		},
-		UserId: userId,
-		Role:   role,
+		UserId:   userId,
+		Role:     role,
+		WorkerID: workerId,
 	})
 
 	return token.SignedString([]byte(signingKey))

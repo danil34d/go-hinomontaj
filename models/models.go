@@ -7,12 +7,12 @@ import (
 )
 
 type User struct {
-	ID   int    `json:"id" db:"id"`
-	Name string `json:"name" db:"name"`
-
+	ID       int    `json:"id" db:"id"`
+	Name     string `json:"name" db:"name"`
 	Email    string `json:"email" db:"email"`
-	Password string `json:"password" db:"password_hash"`
+	Password string `json:"-" db:"password_hash"`
 	Role     string `json:"role" db:"role"`
+	WorkerID int    `json:"worker_id" db:"-"`
 }
 
 type SignInInput struct {

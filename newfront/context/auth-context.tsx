@@ -6,14 +6,15 @@ import { createContext, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import { useToast } from "@/components/ui/use-toast"
 
-type User = {
+interface User {
   id: number
+  name: string
   email: string
-  role: "manager" | "worker"
-  name?: string
+  role: string
+  worker_id?: number
 }
 
-type AuthContextType = {
+interface AuthContextType {
   user: User | null
   token: string | null
   login: (email: string, password: string) => Promise<void>
@@ -47,6 +48,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const login = async (email: string, password: string) => {
     try {
       setIsLoading(true)
+      console.log("Начало процесса входа для:", email)
+      
       const response = await fetch("http://localhost:8080/api/auth/login", {
         method: "POST",
         headers: {
@@ -61,6 +64,21 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
 
       const data = await response.json()
+      console.log("Полученные данные при входе:", {
+        user: data.user,
+        token: data.token ? "present" : "missing",
+        worker_id: data.user.worker_id,
+        role: data.user.role
+      })
+
+      // Проверяем наличие worker_id для пользователей с ролью worker
+      if (data.user.role === "worker") {
+        if (!data.user.worker_id) {
+          console.error("КРИТИЧЕСКАЯ ОШИБКА: Отсутствует worker_id для пользователя с ролью worker")
+          throw new Error("Не удалось получить ID работника при входе")
+        }
+        console.log("Успешно получен worker_id:", data.user.worker_id)
+      }
 
       // Сохраняем токен и данные пользователя
       localStorage.setItem("token", data.token)
@@ -81,6 +99,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         router.push("/dashboard/worker")
       }
     } catch (error) {
+      console.error("Ошибка при входе:", error)
       toast({
         variant: "destructive",
         title: "Ошибка входа",

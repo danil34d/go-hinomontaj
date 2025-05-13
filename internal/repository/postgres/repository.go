@@ -658,3 +658,23 @@ func (r *Repository) GetClientTypes() ([]string, error) {
 	logger.Debug("Получено типов клиентов: %d", len(types))
 	return types, nil
 }
+
+func (r *Repository) GetWorkerByName(name string) (models.Worker, error) {
+	var worker models.Worker
+	query := `
+		SELECT id, name, surname, salary, created_at, updated_at
+		FROM workers
+		WHERE name = $1`
+
+	logger.Debug("Поиск работника по имени: %s", name)
+	logger.Debug("SQL запрос: %s", query)
+
+	err := r.db.Get(&worker, query, name)
+	if err != nil {
+		logger.Error("Ошибка при получении работника по имени: %v", err)
+		return models.Worker{}, fmt.Errorf("ошибка при получении работника: %w", err)
+	}
+
+	logger.Debug("Работник найден: %+v", worker)
+	return worker, nil
+}
