@@ -13,6 +13,7 @@ import { fetchWithAuth } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
 import { useAuth } from "@/context/auth-context"
+import { WheelPositionSelector, WheelPosition } from "./wheel-position-selector"
 
 interface Client {
   id: number
@@ -59,6 +60,8 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
 
   const [totalAmount, setTotalAmount] = useState(0)
   const [selectedClientType, setSelectedClientType] = useState("")
+  const [selectedTruckType, setSelectedTruckType] = useState<"type1" | "type2" | null>(null)
+  const [selectedWheelPosition, setSelectedWheelPosition] = useState<WheelPosition | null>(null)
 
   const paymentMethods = [
     { value: "cash", label: "Наличные" },
@@ -67,13 +70,14 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
   ]
 
   // Фильтруем методы оплаты в зависимости от типа клиента
-  const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ"
+  const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ"
     ? paymentMethods.filter(method => method.value === "invoice")
     : paymentMethods
 
-  // Если выбран контрагент и метод оплаты наличными или картой, меняем на безналичный
+  // Если выбран контрагент или агрегатор и метод оплаты наличными или картой, меняем на безналичный
   useEffect(() => {
-    if (selectedClientType === "КОНТРАГЕНТЫ" && (formData.payment_method === "cash" || formData.payment_method === "card")) {
+    if ((selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ") && 
+        (formData.payment_method === "cash" || formData.payment_method === "card")) {
       setFormData(prev => ({ ...prev, payment_method: "invoice" }))
     }
   }, [selectedClientType])
@@ -202,6 +206,15 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
       })
       return
     }
+
+    if (!selectedWheelPosition) {
+      toast({
+        title: "Ошибка",
+        description: "Выберите позицию колеса",
+        variant: "destructive"
+      })
+      return
+    }
     
     const service = services.find((s: Service) => s.id.toString() === serviceId)
     if (!service) {
@@ -287,6 +300,7 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
       vehicle_number: formData.vehicle_number,
       payment_method: formData.payment_method,
       description: formData.description,
+      truck_type: selectedTruckType,
       services: serviceIds.map((serviceId: number) => {
         const service = services.find((s: Service) => s.id === serviceId)
         if (!service) {
@@ -299,6 +313,7 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
         return {
           service_id: serviceId,
           service_description: service.name,
+          wheel_position: selectedWheelPosition,
           price: price,
         }
       }),
@@ -382,6 +397,16 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
                   required
                 />
               </div>
+            </div>
+
+            <div className="space-y-2">
+              <Label>Позиция колеса</Label>
+              <WheelPositionSelector
+                value={selectedWheelPosition}
+                onChange={setSelectedWheelPosition}
+                truckType={selectedTruckType}
+                onTruckTypeChange={setSelectedTruckType}
+              />
             </div>
 
             <div className="space-y-2">

@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { ordersApi } from "@/lib/api"
+import { ordersApi, clientsApi } from "@/lib/api"
 import { Plus, Search, Pencil, Trash2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -25,6 +25,7 @@ import { Badge } from "@/components/ui/badge"
 
 export default function ManagerOrdersPage() {
   const [orders, setOrders] = useState([])
+  const [clients, setClients] = useState([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedOrder, setSelectedOrder] = useState(null)
@@ -39,8 +40,22 @@ export default function ManagerOrdersPage() {
   const fetchOrders = async () => {
     try {
       setLoading(true)
-      const data = await ordersApi.getAll()
-      setOrders(data)
+      const [ordersData, clientsData] = await Promise.all([
+        ordersApi.getAll(),
+        clientsApi.getAll()
+      ])
+
+      // Добавляем информацию о клиентах к заказам
+      const ordersWithClients = ordersData.map(order => {
+        const client = clientsData.find(c => c.id === order.client_id)
+        return {
+          ...order,
+          client: client || null
+        }
+      })
+
+      setOrders(ordersWithClients)
+      setClients(clientsData)
     } catch (error) {
       toast({
         variant: "destructive",
@@ -103,6 +118,19 @@ export default function ManagerOrdersPage() {
     }
   }
 
+  const getClientTypeText = (type) => {
+    switch (type) {
+      case "ФИЗЛИЦА":
+        return "Физическое лицо"
+      case "КОНТРАГЕНТЫ":
+        return "Контрагент"
+      case "АГРЕГАТОРЫ":
+        return "Агрегатор"
+      default:
+        return type || "Н/Д"
+    }
+  }
+
   return (
     <DashboardLayout requiredRole="manager">
       <div className="space-y-6">
@@ -140,42 +168,70 @@ export default function ManagerOrdersPage() {
               <TableHeader>
                 <TableRow>
                   <TableHead>Клиент</TableHead>
-                  <TableHead>Номер автомобиля</TableHead>
+                  <TableHead>Тип клиента</TableHead>
+                  <TableHead>Автомобиль</TableHead>
                   <TableHead>Услуги</TableHead>
                   <TableHead>Сумма</TableHead>
-                  <TableHead>Способ оплаты</TableHead>
-                  <TableHead>Дата</TableHead>
+                  <TableHead>Оплата</TableHead>
+                  <TableHead>Создан</TableHead>
                   <TableHead className="w-[100px]">Действия</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredOrders.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="h-24 text-center">
+                    <TableCell colSpan={8} className="h-24 text-center">
                       Заказы не найдены
                     </TableCell>
                   </TableRow>
                 ) : (
                   filteredOrders.map((order) => (
                     <TableRow key={order.id}>
-                      <TableCell>{order.client?.name}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-col">
+                          <span className="font-medium">{order.client?.name || "Н/Д"}</span>
+                          <span className="text-sm text-muted-foreground">
+                            {order.client?.car_numbers?.join(", ") || "Нет автомобилей"}
+                          </span>
+                        </div>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {getClientTypeText(order.client?.client_type)}
+                        </Badge>
+                      </TableCell>
                       <TableCell>{order.vehicle_number}</TableCell>
                       <TableCell>
-                        <div className="flex flex-wrap gap-1">
+                        <div className="flex flex-col gap-1">
                           {order.services?.map((service) => (
-                            <Badge key={service.id} variant="secondary">
-                              {service.name}
-                            </Badge>
+                            <div key={`${order.id}-${service.service_id}`} className="flex items-center gap-1">
+                              <Badge variant="secondary">
+                                {service.service_description}
+                              </Badge>
+                              <span className="text-sm text-muted-foreground">
+                                {service.wheel_position && `(${service.wheel_position})`}
+                              </span>
+                              <span className="text-sm">{service.price} ₽</span>
+                            </div>
                           ))}
                         </div>
                       </TableCell>
-                      <TableCell>{order.total_amount} ₽</TableCell>
                       <TableCell>
-                        {order.payment_method === "cash" && "Наличные"}
-                        {order.payment_method === "card" && "Карта"}
-                        {order.payment_method === "transfer" && "Перевод"}
+                        <div className="flex flex-col">
+                          <span className="font-medium">{order.total_amount} ₽</span>
+                        </div>
                       </TableCell>
-                      <TableCell>{new Date(order.created_at).toLocaleDateString()}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline">
+                          {getPaymentMethodText(order.payment_method)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        {formatDistanceToNow(new Date(order.created_at), {
+                          addSuffix: true,
+                          locale: ru,
+                        })}
+                      </TableCell>
                       <TableCell>
                         <div className="flex items-center gap-2">
                           <Button

@@ -11,6 +11,7 @@ import { useToast } from "@/components/ui/use-toast"
 import { ordersApi, clientsApi, servicesApi, workersApi } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
+import { WheelPositionSelector, WheelPosition } from "./wheel-position-selector"
 
 interface OrderFormDialogProps {
   open: boolean
@@ -38,6 +39,8 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
   const [totalAmount, setTotalAmount] = useState(0)
   const [selectedClientType, setSelectedClientType] = useState("")
+  const [selectedTruckType, setSelectedTruckType] = useState<"type1" | "type2" | null>(null)
+  const [selectedWheelPosition, setSelectedWheelPosition] = useState<string | null>(null)
 
   const paymentMethods = [
     { value: "cash", label: "Наличные" },
@@ -46,13 +49,14 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   ]
 
   // Фильтруем методы оплаты в зависимости от типа клиента
-  const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ"
+  const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ"
     ? paymentMethods.filter(method => method.value === "invoice")
     : paymentMethods
 
-  // Если выбран контрагент и метод оплаты наличными или картой, меняем на безналичный
+  // Если выбран контрагент или агрегатор и метод оплаты наличными или картой, меняем на безналичный
   useEffect(() => {
-    if (selectedClientType === "КОНТРАГЕНТЫ" && (formData.payment_method === "cash" || formData.payment_method === "card")) {
+    if ((selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ") && 
+        (formData.payment_method === "cash" || formData.payment_method === "card")) {
       setFormData(prev => ({ ...prev, payment_method: "invoice" }))
     }
   }, [selectedClientType])
@@ -234,6 +238,15 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     }
     
     if (!formData.service_ids.includes(serviceIdNum)) {
+      if (!selectedWheelPosition) {
+        toast({
+          title: "Ошибка",
+          description: "Выберите позицию колеса",
+          variant: "destructive"
+        })
+        return
+      }
+      
       setFormData(prev => ({
         ...prev,
         service_ids: [...prev.service_ids, serviceIdNum]
@@ -247,6 +260,32 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       ...prev,
       service_ids: prev.service_ids.filter(id => id !== serviceId)
     }))
+  }
+
+  const getPositionText = (position: string): string => {
+    if (!position) return "Все"
+    if (position === "spare") return "Запасное колесо"
+    
+    const parts = position.split("_")
+    const side = parts[0] === "left" ? "Левое" : "Правое"
+    const axle = parts[1]
+    const dualPosition = parts[2] || ""
+    
+    let axleText = ""
+    if (axle === "1") {
+      axleText = "рулевое"
+    } else {
+      axleText = `${axle}-я ось`
+    }
+
+    let positionText = ""
+    if (dualPosition === "inner") {
+      positionText = "внутреннее"
+    } else if (dualPosition === "outer") {
+      positionText = "внешнее"
+    }
+
+    return `${side} ${axleText}${positionText ? ` ${positionText}` : ""}`
   }
 
   const handleSubmit = async (e) => {
@@ -277,6 +316,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
         vehicle_number: formData.vehicle_number,
         payment_method: formData.payment_method,
         total_amount: totalAmount,
+        truck_type: selectedTruckType,
         services: formData.service_ids.map(serviceId => {
           const service = services.find(s => s.id === serviceId)
           if (!service) {
@@ -289,7 +329,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
           return {
             service_id: service.id,
             service_description: service.name,
-            wheel_position: "all",
+            wheel_position: getPositionText(selectedWheelPosition || "all"),
             price: price
           }
         })
@@ -327,7 +367,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl" aria-describedby="order-dialog-description">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>{order ? "Редактирование заказа" : "Создание нового заказа"}</DialogTitle>
           <DialogDescription id="order-dialog-description">
@@ -392,6 +432,16 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                 value={formData.vehicle_number}
                 onChange={handleChange}
                 required
+              />
+            </div>
+
+            <div className="space-y-2">
+              <Label>Позиция колеса</Label>
+              <WheelPositionSelector
+                value={selectedWheelPosition}
+                onChange={setSelectedWheelPosition}
+                truckType={selectedTruckType}
+                onTruckTypeChange={setSelectedTruckType}
               />
             </div>
 
