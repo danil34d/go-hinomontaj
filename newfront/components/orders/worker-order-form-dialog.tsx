@@ -60,6 +60,24 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
   const [totalAmount, setTotalAmount] = useState(0)
   const [selectedClientType, setSelectedClientType] = useState("")
 
+  const paymentMethods = [
+    { value: "cash", label: "Наличные" },
+    { value: "card", label: "Карта" },
+    { value: "invoice", label: "Безналичный расчет" },
+  ]
+
+  // Фильтруем методы оплаты в зависимости от типа клиента
+  const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ"
+    ? paymentMethods.filter(method => method.value === "invoice")
+    : paymentMethods
+
+  // Если выбран контрагент и метод оплаты наличными или картой, меняем на безналичный
+  useEffect(() => {
+    if (selectedClientType === "КОНТРАГЕНТЫ" && (formData.payment_method === "cash" || formData.payment_method === "card")) {
+      setFormData(prev => ({ ...prev, payment_method: "invoice" }))
+    }
+  }, [selectedClientType])
+
   useEffect(() => {
     if (open) {
       fetchData()
@@ -318,11 +336,11 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{order ? "Редактирование заказа" : "Создание нового заказа"}</DialogTitle>
+          <DialogTitle>{order ? "Редактирование заказа" : "Создание заказа"}</DialogTitle>
           <DialogDescription>
-            {order ? "Измените данные заказа" : "Заполните форму для создания нового заказа"}
+            {order ? "Измените данные заказа" : "Заполните данные для создания нового заказа"}
           </DialogDescription>
         </DialogHeader>
 
@@ -331,7 +349,7 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
             <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
           </div>
         ) : (
-          <form onSubmit={handleSubmit} className="space-y-6">
+          <form onSubmit={handleSubmit} className="space-y-4">
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-2">
                 <Label htmlFor="client_id">Клиент</Label>
@@ -415,29 +433,29 @@ export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: 
               </div>
             </div>
 
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="payment_method">Способ оплаты</Label>
-                <Select
-                  value={formData.payment_method}
-                  onValueChange={(value) => handleSelectChange("payment_method", value)}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите способ оплаты" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="cash">Наличные</SelectItem>
-                    <SelectItem value="card">Карта</SelectItem>
-                    <SelectItem value="transfer">Перевод</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+            <div className="grid w-full items-center gap-1.5">
+              <Label htmlFor="payment_method">Способ оплаты</Label>
+              <Select
+                value={formData.payment_method}
+                onValueChange={(value) => handleSelectChange("payment_method", value)}
+                disabled={loading || submitting}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите способ оплаты" />
+                </SelectTrigger>
+                <SelectContent>
+                  {availablePaymentMethods.map((method) => (
+                    <SelectItem key={method.value} value={method.value}>
+                      {method.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
 
-              <div className="space-y-2">
-                <Label>Общая сумма</Label>
-                <div className="text-2xl font-bold">{totalAmount} ₽</div>
-              </div>
+            <div className="space-y-2">
+              <Label>Общая сумма</Label>
+              <div className="text-2xl font-bold">{totalAmount} ₽</div>
             </div>
 
             <div className="space-y-2">

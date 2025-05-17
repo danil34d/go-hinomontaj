@@ -39,6 +39,24 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   const [totalAmount, setTotalAmount] = useState(0)
   const [selectedClientType, setSelectedClientType] = useState("")
 
+  const paymentMethods = [
+    { value: "cash", label: "Наличные" },
+    { value: "card", label: "Карта" },
+    { value: "invoice", label: "Безналичный расчет" },
+  ]
+
+  // Фильтруем методы оплаты в зависимости от типа клиента
+  const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ"
+    ? paymentMethods.filter(method => method.value === "invoice")
+    : paymentMethods
+
+  // Если выбран контрагент и метод оплаты наличными или картой, меняем на безналичный
+  useEffect(() => {
+    if (selectedClientType === "КОНТРАГЕНТЫ" && (formData.payment_method === "cash" || formData.payment_method === "card")) {
+      setFormData(prev => ({ ...prev, payment_method: "invoice" }))
+    }
+  }, [selectedClientType])
+
   useEffect(() => {
     if (open) {
       fetchData()
@@ -430,15 +448,17 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                 <Select
                   value={formData.payment_method}
                   onValueChange={(value) => handleSelectChange("payment_method", value)}
-                  required
+                  disabled={loading || submitting}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Выберите способ оплаты" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Наличные</SelectItem>
-                    <SelectItem value="card">Карта</SelectItem>
-                    <SelectItem value="transfer">Перевод</SelectItem>
+                    {availablePaymentMethods.map((method) => (
+                      <SelectItem key={method.value} value={method.value}>
+                        {method.label}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
