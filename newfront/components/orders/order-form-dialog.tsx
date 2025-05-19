@@ -42,6 +42,12 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   const [selectedTruckType, setSelectedTruckType] = useState<"type1" | "type2" | null>(null)
   const [selectedWheelPosition, setSelectedWheelPosition] = useState<string | null>(null)
 
+  // Получаем уникальные типы клиентов
+  const clientTypes = Array.from(new Set(clients.map(client => client.client_type)))
+
+  // Фильтруем клиентов по выбранному типу
+  const filteredClients = clients.filter(client => client.client_type === selectedClientType)
+
   const paymentMethods = [
     { value: "cash", label: "Наличные" },
     { value: "card", label: "Карта" },
@@ -97,6 +103,11 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       setSelectedClientType("")
     }
   }, [formData.client_id, clients])
+
+  // Сбрасываем выбранного клиента при изменении типа клиента
+  useEffect(() => {
+    setFormData(prev => ({ ...prev, client_id: "" }))
+  }, [selectedClientType])
 
   useEffect(() => {
     // Пересчитываем общую сумму при изменении выбранных услуг или типа клиента
@@ -191,7 +202,12 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
   const handleChange = (e) => {
     const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+    // Преобразуем номер автомобиля в верхний регистр
+    if (name === "vehicle_number") {
+      setFormData((prev) => ({ ...prev, [name]: value.toUpperCase() }))
+    } else {
+      setFormData((prev) => ({ ...prev, [name]: value }))
+    }
   }
 
   const handleSelectChange = (name, value) => {
@@ -382,24 +398,49 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
         ) : (
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-2">
-                <Label htmlFor="client_id">Клиент</Label>
-                <Select
-                  value={formData.client_id || ""}
-                  onValueChange={(value) => handleSelectChange("client_id", value)}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите клиента" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {clients.map((client) => (
-                      <SelectItem key={client.id} value={client.id?.toString() || ""}>
-                        {client.name} ({client.client_type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <div className="space-y-4">
+                <div className="space-y-2">
+                  <Label>Тип клиента</Label>
+                  <Select
+                    value={selectedClientType}
+                    onValueChange={setSelectedClientType}
+                    required
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите тип клиента" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {clientTypes.map((type) => (
+                        <SelectItem key={type} value={type}>
+                          {type === "ФИЗЛИЦА" ? "Физическое лицо" : 
+                           type === "КОНТРАГЕНТЫ" ? "Контрагент" : 
+                           type === "АГРЕГАТОРЫ" ? "Агрегатор" : type}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="client_id">Клиент</Label>
+                  <Select
+                    value={formData.client_id || ""}
+                    onValueChange={(value) => handleSelectChange("client_id", value)}
+                    required
+                    disabled={!selectedClientType}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите клиента" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {filteredClients.map((client) => (
+                        <SelectItem key={client.id} value={client.id?.toString() || ""}>
+                          {client.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               <div className="space-y-2">
