@@ -259,8 +259,22 @@ func (r *Repository) AddCarToClient(clientId int, car models.Car) error {
 	}
 	defer tx.Rollback()
 
+	// Проверяем существование автомобиля в рамках транзакции
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM cars WHERE number = $1)`
+	err = tx.QueryRow(query, car.Number).Scan(&exists)
+	if err != nil {
+		logger.Error("Ошибка при проверке существования автомобиля: %v", err)
+		return fmt.Errorf("ошибка при проверке существования автомобиля: %w", err)
+	}
+
+	if exists {
+		logger.Warning("Автомобиль с номером %s уже существует", car.Number)
+		return fmt.Errorf("автомобиль с номером %s уже существует", car.Number)
+	}
+
 	// Создаем запись автомобиля
-	query := `
+	query = `
 		INSERT INTO cars (number, model, year, created_at, updated_at)
 		VALUES ($1, $2, $3, NOW(), NOW())
 		RETURNING id`
@@ -721,4 +735,19 @@ func (r *Repository) GetWorkerStatistics(workerId int) (models.WorkerStatistics,
 
 	logger.Info("Статистика успешно получена для работника ID:%d", workerId)
 	return stats, nil
+}
+
+func (r *Repository) CarExists(number string) (bool, error) {
+	var exists bool
+	query := `SELECT EXISTS(SELECT 1 FROM cars WHERE number = $1)`
+
+	logger.Debug("Проверка существования автомобиля с номером: %s", number)
+	err := r.db.Get(&exists, query, number)
+	if err != nil {
+		logger.Error("Ошибка при проверке существования автомобиля: %v", err)
+		return false, fmt.Errorf("ошибка при проверке существования автомобиля: %w", err)
+	}
+
+	logger.Debug("Результат проверки существования автомобиля %s: %v", number, exists)
+	return exists, nil
 }

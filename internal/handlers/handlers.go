@@ -90,6 +90,8 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			clients.DELETE("/:id", h.DeleteClient)
 			clients.GET("/:id/vehicles", h.GetClientCars)
 			clients.POST("/:id/vehicles", h.CreateClientCar)
+			clients.POST("/:id/vehicles/upload", h.UploadClientCars)
+			clients.GET("/vehicles/template", h.GetCarsTemplate)
 		}
 
 		// Управление сотрудниками
@@ -781,4 +783,77 @@ func (h *Handler) GetWorkerStatistics(c *gin.Context) {
 
 	logger.Debug("Успешно получена статистика для работника ID:%v", worker.ID)
 	c.JSON(http.StatusOK, stats)
+}
+
+// UploadClientCars обрабатывает загрузку Excel файла с машинами клиента
+func (h *Handler) UploadClientCars(c *gin.Context) {
+	clientId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Error("Неверный ID клиента: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID клиента"})
+		return
+	}
+
+	// Получаем файл из формы
+	file, err := c.FormFile("file")
+	if err != nil {
+		logger.Error("Ошибка при получении файла: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не удалось получить файл"})
+		return
+	}
+
+	// Открываем файл
+	src, err := file.Open()
+	if err != nil {
+		logger.Error("Ошибка при открытии файла: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось открыть файл"})
+		return
+	}
+	defer src.Close()
+
+	// Читаем содержимое файла
+	fileData := make([]byte, file.Size)
+	_, err = src.Read(fileData)
+	if err != nil {
+		logger.Error("Ошибка при чтении файла: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось прочитать файл"})
+		return
+	}
+
+	// Обрабатываем файл
+	if err := h.services.Client.UploadCarsFromExcel(clientId, fileData); err != nil {
+		logger.Error("Ошибка при обработке файла: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Ошибка при обработке файла: %v", err)})
+		return
+	}
+
+	logger.Info("Успешно загружены машины для клиента ID:%d", clientId)
+	c.JSON(http.StatusOK, gin.H{"message": "Машины успешно загружены"})
+}
+
+// GetCarsTemplate обрабатывает запрос на скачивание шаблона Excel файла
+func (h *Handler) GetCarsTemplate(c *gin.Context) {
+	logger.Debug("Получен запрос на скачивание шаблона Excel файла")
+
+	// Генерируем шаблон
+	template, err := h.services.Client.GetCarsTemplate()
+	if err != nil {
+		logger.Error("Ошибка при генерации шаблона: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось сгенерировать шаблон"})
+		return
+	}
+
+	// Устанавливаем заголовки для скачивания файла
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Transfer-Encoding", "binary")
+	c.Header("Content-Disposition", "attachment; filename=cars_template.xlsx")
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Expires", "0")
+	c.Header("Cache-Control", "must-revalidate")
+	c.Header("Pragma", "public")
+
+	// Отправляем файл
+	c.DataFromReader(http.StatusOK, int64(template.Len()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", template, nil)
+
+	logger.Info("Шаблон Excel файла успешно отправлен")
 }

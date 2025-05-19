@@ -14,10 +14,19 @@ function getToken() {
 export async function fetchWithAuth(url: string, options: RequestInit = {}) {
   const token = localStorage.getItem("token")
 
-  const headers = {
-    "Content-Type": "application/json",
+  // Базовые заголовки
+  const headers: Record<string, string> = {
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    ...options.headers,
+  }
+
+  // Добавляем Content-Type только если это не FormData
+  if (!(options.body instanceof FormData)) {
+    headers["Content-Type"] = "application/json"
+  }
+
+  // Добавляем пользовательские заголовки
+  if (options.headers) {
+    Object.assign(headers, options.headers)
   }
 
   try {

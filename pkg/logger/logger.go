@@ -2,94 +2,82 @@ package logger
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"runtime"
 	"strings"
-
-	"github.com/sirupsen/logrus"
 )
 
-var log = logrus.New()
+var (
+	debugLogger   *log.Logger
+	infoLogger    *log.Logger
+	warningLogger *log.Logger
+	errorLogger   *log.Logger
+)
 
 func init() {
-	// Настраиваем формат вывода
-	log.SetFormatter(&logrus.TextFormatter{
-		FullTimestamp:    true,
-		TimestampFormat:  "2006-01-02 15:04:05",
-		CallerPrettyfier: callerPrettyfier,
-	})
-
-	// Включаем отображение места вызова
-	log.SetReportCaller(true)
-
-	// По умолчанию выводим в stdout
-	log.SetOutput(os.Stdout)
-
-	// Устанавливаем уровень логирования
-	log.SetLevel(logrus.DebugLevel)
+	debugLogger = log.New(os.Stdout, "DEBUG: ", log.LstdFlags)
+	infoLogger = log.New(os.Stdout, "INFO: ", log.LstdFlags)
+	warningLogger = log.New(os.Stdout, "WARNING: ", log.LstdFlags)
+	errorLogger = log.New(os.Stderr, "ERROR: ", log.LstdFlags)
 }
 
-// callerPrettyfier форматирует информацию о месте вызова
-func callerPrettyfier(f *runtime.Frame) (string, string) {
-	// Получаем короткое имя файла (без полного пути)
-	filename := filepath.Base(f.File)
+// getCallerInfo возвращает информацию о месте вызова логгера
+func getCallerInfo() string {
+	// Пропускаем 3 кадра стека:
+	// 1. runtime.Callers
+	// 2. getCallerInfo
+	// 3. метод логгера (Debug, Info, Warning, Error)
+	pc, file, line, ok := runtime.Caller(3)
+	if !ok {
+		return "unknown"
+	}
 
-	// Получаем имя функции без пути к пакету
-	function := filepath.Base(f.Function)
+	// Получаем имя функции
+	fn := runtime.FuncForPC(pc)
+	funcName := "unknown"
+	if fn != nil {
+		// Извлекаем только имя функции без пути пакета
+		parts := strings.Split(fn.Name(), ".")
+		funcName = parts[len(parts)-1]
+	}
 
-	return function, fmt.Sprintf("%s:%d", filename, f.Line)
+	// Получаем только имя файла без пути
+	fileName := filepath.Base(file)
+
+	return fmt.Sprintf("%s:%d:%s", fileName, line, funcName)
+}
+
+// formatMessage форматирует сообщение с информацией о месте вызова
+func formatMessage(format string, args ...interface{}) string {
+	callerInfo := getCallerInfo()
+	message := fmt.Sprintf(format, args...)
+	return fmt.Sprintf("%s %s", callerInfo, message)
 }
 
 // Debug логирует отладочное сообщение
 func Debug(format string, args ...interface{}) {
-	log.Debugf(format, args...)
+	debugLogger.Printf(formatMessage(format, args...))
 }
 
 // Info логирует информационное сообщение
 func Info(format string, args ...interface{}) {
-	log.Infof(format, args...)
+	infoLogger.Printf(formatMessage(format, args...))
 }
 
 // Warning логирует предупреждение
 func Warning(format string, args ...interface{}) {
-	log.Warnf(format, args...)
+	warningLogger.Printf(formatMessage(format, args...))
 }
 
 // Error логирует ошибку
 func Error(format string, args ...interface{}) {
-	log.Errorf(format, args...)
+	errorLogger.Printf(formatMessage(format, args...))
 }
 
 // Fatal логирует критическую ошибку и завершает программу
 func Fatal(format string, args ...interface{}) {
-	log.Fatalf(format, args...)
-}
-
-// WithFields создает новую запись лога с дополнительными полями
-func WithFields(fields map[string]interface{}) *logrus.Entry {
-	return log.WithFields(fields)
-}
-
-// SetLevel устанавливает уровень логирования
-func SetLevel(level string) {
-	switch strings.ToLower(level) {
-	case "debug":
-		log.SetLevel(logrus.DebugLevel)
-	case "info":
-		log.SetLevel(logrus.InfoLevel)
-	case "warn":
-		log.SetLevel(logrus.WarnLevel)
-	case "error":
-		log.SetLevel(logrus.ErrorLevel)
-	case "fatal":
-		log.SetLevel(logrus.FatalLevel)
-	default:
-		log.SetLevel(logrus.InfoLevel)
-	}
-}
-
-// GetLogger возвращает экземпляр логгера
-func GetLogger() *logrus.Logger {
-	return log
+	errorLogger.Printf(formatMessage(format, args...))
+	os.Exit(1)
 }

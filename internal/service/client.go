@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"go-hinomontaj/models"
 	"go-hinomontaj/pkg/logger"
 )
@@ -51,4 +52,14 @@ func (s *ClientService) AddCarToClient(clientId int, car models.Car) error {
 func (s *ClientService) GetTypes() ([]string, error) {
 	logger.Debug("Получение списка типов клиентов")
 	return s.repo.GetClientTypes()
+}
+
+func (s *ClientService) UploadCarsFromExcel(clientId int, fileData []byte) error {
+	carService := NewCarService(s.repo)
+	return carService.UploadCarsFromExcel(clientId, fileData)
+}
+
+func (s *ClientService) GetCarsTemplate() (*bytes.Buffer, error) {
+	carService := NewCarService(s.repo)
+	return carService.GenerateTemplate()
 }

@@ -1,6 +1,7 @@
 package service
 
 import (
+	"bytes"
 	"go-hinomontaj/internal/repository/postgres"
 	"go-hinomontaj/models"
 
@@ -58,6 +59,8 @@ type Client interface {
 	GetClientCars(clientId int) ([]models.Car, error)
 	AddCarToClient(clientId int, car models.Car) error
 	GetTypes() ([]string, error)
+	UploadCarsFromExcel(clientId int, fileData []byte) error
+	GetCarsTemplate() (*bytes.Buffer, error)
 }
 
 type Order interface {
@@ -101,6 +104,7 @@ type Repository interface {
 	UpdateClient(id int, client models.Client) error
 	DeleteClient(id int) error
 	GetClientTypes() ([]string, error)
+	CarExists(number string) (bool, error)
 
 	//Services
 	CreateService(service models.Service) (int, error)
