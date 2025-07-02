@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useMemo } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,42 @@ import { useToast } from "@/components/ui/use-toast"
 import { ordersApi, clientsApi, servicesApi, workersApi } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { X } from "lucide-react"
-import { WheelPositionSelector, WheelPosition } from "./wheel-position-selector"
+import { WheelPositionSelector } from "./wheel-position-selector"
+
+interface Vehicle {
+  id: number
+  number: string
+  model: string
+  year: number
+}
+
+interface Client {
+  id: number
+  name: string
+  client_type: string
+  owner_phone: string
+  manager_phone: string
+  contract_id: number
+  car_numbers: string[]
+  created_at: string
+  updated_at: string
+}
+
+interface Service {
+  id: number
+  name: string
+  price: number
+  contract_id: number
+  material_card: number
+  created_at: string
+  updated_at: string
+}
+
+interface Worker {
+  id: number
+  name: string
+  surname: string
+}
 
 interface OrderFormDialogProps {
   open: boolean
@@ -20,159 +55,216 @@ interface OrderFormDialogProps {
   onSuccess: () => void
 }
 
+interface FormData {
+  worker_id: string
+  vehicle_number: string
+  payment_method: string
+  total_amount: number
+  service_ids: number[]
+}
+
 export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderFormDialogProps) {
-  const [clients, setClients] = useState([])
-  const [services, setServices] = useState([])
-  const [workers, setWorkers] = useState([])
+  const [clients, setClients] = useState<Client[]>([])
+  const [services, setServices] = useState<Service[]>([])
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [clientVehicles, setClientVehicles] = useState<Vehicle[]>([])
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [loadingVehicles, setLoadingVehicles] = useState(false)
   const { toast } = useToast()
 
-  const [formData, setFormData] = useState({
-    client_id: "",
+  const [formData, setFormData] = useState<FormData>({
     worker_id: "",
     vehicle_number: "",
     payment_method: "cash",
-    description: "",
-    service_ids: [] as number[],
+    total_amount: 0,
+    service_ids: [],
   })
 
   const [totalAmount, setTotalAmount] = useState(0)
   const [selectedClientType, setSelectedClientType] = useState("")
   const [selectedTruckType, setSelectedTruckType] = useState<"type1" | "type2" | null>(null)
   const [selectedWheelPosition, setSelectedWheelPosition] = useState<string | null>(null)
+  const [selectedClient, setSelectedClient] = useState<Client | null>(null)
+  const [selectedServices, setSelectedServices] = useState<Array<{
+    serviceId: number
+    wheelPosition: string
+    description: string
+  }>>([])
+
+  // Фильтруем клиентов по типу
+  const filteredClients = useMemo(() => {
+    if (selectedClientType) {
+      return clients.filter(client => client.client_type === selectedClientType)
+    }
+    return clients
+  }, [selectedClientType, clients])
+
+  // Сбрасываем выбор клиента при изменении типа
+  useEffect(() => {
+    setSelectedClient(null)
+    setServices([])
+  }, [selectedClientType])
 
   // Получаем уникальные типы клиентов
-  const clientTypes = Array.from(new Set(clients.map(client => client.client_type)))
+  const clientTypes = useMemo(() => {
+    const types = new Set(clients.map(client => client.client_type))
+    return Array.from(types)
+  }, [clients])
 
-  // Фильтруем клиентов по выбранному типу
-  const filteredClients = clients.filter(client => client.client_type === selectedClientType)
+  // Фильтруем машины по выбранному клиенту
+  const filteredVehicles = useMemo(() => {
+    if (!selectedClient) return []
+    return clientVehicles.filter(vehicle => 
+      selectedClient.car_numbers?.includes(vehicle.number)
+    )
+  }, [selectedClient, clientVehicles])
 
   const paymentMethods = [
-    { value: "cash", label: "Наличные" },
-    { value: "card", label: "Карта" },
-    { value: "invoice", label: "Безналичный расчет" },
+    { value: "НАЛИЧНЫЕ", label: "Наличные" },
+    { value: "ПЕРЕВОД", label: "Перевод" },
+    { value: "КАРТА", label: "Карта" }
   ]
+
+  // Получаем клиента "Наличка" для наличных платежей
+  const cashClient = clients.find(client => client.name === "Наличка" && client.client_type === "НАЛИЧКА")
 
   // Фильтруем методы оплаты в зависимости от типа клиента
   const availablePaymentMethods = selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ"
-    ? paymentMethods.filter(method => method.value === "invoice")
+    ? paymentMethods.filter(method => method.value === "ПЕРЕВОД")
     : paymentMethods
 
   // Если выбран контрагент или агрегатор и метод оплаты наличными или картой, меняем на безналичный
   useEffect(() => {
     if ((selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ") && 
-        (formData.payment_method === "cash" || formData.payment_method === "card")) {
-      setFormData(prev => ({ ...prev, payment_method: "invoice" }))
+        (formData.payment_method === "НАЛИЧНЫЕ" || formData.payment_method === "КАРТА")) {
+      setFormData(prev => ({ ...prev, payment_method: "ПЕРЕВОД" }))
     }
   }, [selectedClientType])
 
+  // Автоматически устанавливаем клиента "Наличка" при выборе наличной оплаты
+  useEffect(() => {
+    if (formData.payment_method === "НАЛИЧНЫЕ" && cashClient) {
+      setFormData(prev => ({ 
+        ...prev, 
+        client_id: cashClient.id.toString() 
+      }))
+      setSelectedClientType("НАЛИЧКА")
+      // Загружаем услуги с ценами для налички (договор ID 1)
+      loadServicesByContract(1)
+    }
+  }, [formData.payment_method, cashClient])
+
+  // Проверяем, нужно ли показывать поля выбора клиента
+  const shouldShowClientSelection = formData.payment_method !== "НАЛИЧНЫЕ"
+
+  // Проверяем, нужно ли показывать выбор машины из списка
+  const shouldShowVehicleSelection = selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ"
+
+  // Функция для загрузки машин клиента
+  const fetchClientVehicles = async (clientId: number) => {
+    try {
+      setLoadingVehicles(true)
+      const vehicles = await clientsApi.getVehicles(clientId)
+      setClientVehicles(vehicles)
+    } catch (error: any) {
+      console.error("Ошибка при загрузке машин клиента:", error)
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось загрузить машины клиента",
+      })
+    } finally {
+      setLoadingVehicles(false)
+    }
+  }
+
+  // Инициализация формы при открытии диалога
   useEffect(() => {
     if (open) {
-      fetchData()
       if (order) {
         setFormData({
-          client_id: order.client_id?.toString() || "",
           worker_id: order.worker_id?.toString() || "",
           vehicle_number: order.vehicle_number || "",
-          payment_method: order.payment_method || "cash",
-          description: order.description || "",
-          service_ids: order.services?.map(service => service.service_id) || [],
+          payment_method: order.payment_method || "НАЛИЧНЫЕ",
+          total_amount: order.total_amount || 0,
+          service_ids: order.services?.map((s: any) => s.service_id) || []
         })
+        
+        // Устанавливаем выбранного клиента
+        if (order.client) {
+          setSelectedClient(order.client)
+          loadServicesByContract(order.client.contract_id)
+        }
       } else {
         setFormData({
-          client_id: "",
           worker_id: "",
           vehicle_number: "",
-          payment_method: "cash",
-          description: "",
-          service_ids: [],
+          payment_method: "НАЛИЧНЫЕ",
+          total_amount: 0,
+          service_ids: []
         })
+        setSelectedClient(null)
+        setServices([])
       }
     }
   }, [open, order])
 
+  // Пересчитываем общую сумму при изменении выбранных услуг
   useEffect(() => {
-    // Обновляем тип клиента при выборе клиента
-    if (formData.client_id) {
-      const selectedClient = clients.find(c => c.id?.toString() === formData.client_id)
-      if (selectedClient) {
-        setSelectedClientType(selectedClient.client_type || "")
-      }
-    } else {
-      setSelectedClientType("")
-    }
-  }, [formData.client_id, clients])
-
-  // Сбрасываем выбранного клиента при изменении типа клиента
-  useEffect(() => {
-    setFormData(prev => ({ ...prev, client_id: "" }))
-  }, [selectedClientType])
-
-  useEffect(() => {
-    // Пересчитываем общую сумму при изменении выбранных услуг или типа клиента
-    console.log("Пересчет общей суммы. Выбранные услуги:", formData.service_ids)
-    console.log("Доступные услуги:", services)
-    console.log("Тип клиента:", selectedClientType)
-    
-    const total = formData.service_ids.reduce((sum, serviceId) => {
-      const service = services.find(s => s.id === serviceId)
-      console.log("Поиск услуги по ID:", serviceId, "Найдена:", service)
+    let total = 0
+    formData.service_ids.forEach((serviceId) => {
+      const service = services.find((s: Service) => s.id === serviceId)
       
       if (!service) {
         console.warn(`Не найдена услуга с ID ${serviceId}`)
-        return sum
+        return
       }
       
-      if (!selectedClientType) {
-        console.warn("Не выбран тип клиента")
-        return sum
+      try {
+        const wheelType = getWheelType(selectedWheelPosition || "all")
+        const price = getServicePrice(service, wheelType)
+        
+        if (typeof price !== 'number' || isNaN(price)) {
+          console.warn(`Некорректная цена для услуги ${serviceId}: ${price}`)
+          return
+        }
+        
+        console.log(`Добавляем цену услуги ${serviceId} (${service.name}) для типа колеса ${wheelType}: ${price}`)
+        total += price
+      } catch (error) {
+        console.warn(`Ошибка при расчете цены для услуги ${serviceId}:`, error)
+        return
       }
-      
-      const price = service.prices[selectedClientType]
-      if (price === undefined || price === null) {
-        console.warn(`Не найдена цена для услуги ${serviceId} и типа клиента ${selectedClientType}`)
-        return sum
-      }
-      
-      if (typeof price !== 'number' || isNaN(price)) {
-        console.warn(`Некорректная цена для услуги ${serviceId}: ${price}`)
-        return sum
-      }
-      
-      console.log(`Добавляем цену услуги ${serviceId} для типа клиента ${selectedClientType}: ${price}`)
-      return sum + price
-    }, 0)
+    })
     
     console.log("Итоговая сумма:", total)
     setTotalAmount(total)
-  }, [formData.service_ids, services, selectedClientType])
+  }, [formData.service_ids, services, selectedWheelPosition])
 
   const fetchData = async () => {
     try {
       setLoading(true)
-      const [clientsData, servicesData, workersData] = await Promise.all([
+      const [clientsData, workersData] = await Promise.all([
         clientsApi.getAll(),
-        servicesApi.getAll(),
         workersApi.getAll()
       ])
       
       // Проверяем и форматируем данные
-      const formattedClients = clientsData.map(client => ({
+      const formattedClients = clientsData.map((client: any) => ({
         ...client,
         id: client.id || 0,
         name: client.name || '',
-        client_type: client.client_type || ''
-      }))
-
-      const formattedServices = servicesData.map(service => ({
-        ...service,
-        id: service.id || 0,
-        name: service.name || '',
-        prices: service.prices || {}
+        client_type: client.client_type || '',
+        owner_phone: client.owner_phone || '',
+        manager_phone: client.manager_phone || '',
+        contract_id: client.contract_id || 0,
+        car_numbers: client.car_numbers || [],
+        created_at: client.created_at || '',
+        updated_at: client.updated_at || ''
       }))
       
-      const formattedWorkers = workersData.map(worker => ({
+      const formattedWorkers = workersData.map((worker: any) => ({
         ...worker,
         id: worker.id || 0,
         name: worker.name || '',
@@ -181,14 +273,15 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       
       console.log("Полученные данные:", {
         clients: formattedClients,
-        services: formattedServices,
         workers: formattedWorkers
       })
 
       setClients(formattedClients)
-      setServices(formattedServices)
       setWorkers(formattedWorkers)
-    } catch (error) {
+      
+      // Загружаем услуги с ценами для налички (договор ID 1)
+      await loadServicesByContract(1)
+    } catch (error: any) {
       console.error("Ошибка при загрузке данных:", error)
       toast({
         variant: "destructive",
@@ -200,72 +293,71 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     }
   }
 
-  const handleChange = (e) => {
+  // Функция для загрузки услуг с ценами по договору
+  const loadServicesByContract = async (contractId: number) => {
+    try {
+      const servicesData = await servicesApi.getServicesByContract(contractId)
+      
+      const formattedServices = servicesData.map((service: any) => ({
+        ...service,
+        id: service.id || 0,
+        name: service.name || '',
+        price: service.price || 0,
+        contract_id: service.contract_id || 0,
+        material_card: service.material_card || 0,
+        created_at: service.created_at || '',
+        updated_at: service.updated_at || ''
+      }))
+      
+      console.log("Загружены услуги для договора", contractId, ":", formattedServices)
+      setServices(formattedServices)
+    } catch (error: any) {
+      console.error("Ошибка при загрузке услуг для договора", contractId, ":", error)
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось загрузить услуги с ценами",
+      })
+    }
+  }
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
     const { name, value } = e.target
     // Преобразуем номер автомобиля в верхний регистр
     if (name === "vehicle_number") {
       setFormData((prev) => ({ ...prev, [name]: value.toUpperCase() }))
     } else {
-      setFormData((prev) => ({ ...prev, [name]: value }))
+    setFormData((prev) => ({ ...prev, [name]: value }))
     }
   }
 
-  const handleSelectChange = (name, value) => {
+  const handleSelectChange = (name: string, value: string) => {
     if (!value) return;
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
   const handleServiceSelect = (serviceId: string) => {
     const serviceIdNum = parseInt(serviceId)
-    console.log("Выбрана услуга с ID:", serviceIdNum)
+    const isChecked = !formData.service_ids.includes(serviceIdNum)
     
-    if (!selectedClientType) {
-      toast({
-        title: "Ошибка",
-        description: "Сначала выберите клиента",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    const service = services.find(s => s.id === serviceIdNum)
-    if (!service) {
-      console.warn(`Не найдена услуга с ID ${serviceIdNum}`)
-      return
-    }
-    
-    const price = service.prices[selectedClientType]
-    if (price === undefined || price === null) {
-      toast({
-        title: "Ошибка",
-        description: `Для выбранного типа клиента нет цены на услугу "${service.name}"`,
-        variant: "destructive"
-      })
-      return
-    }
-    
-    if (typeof price !== 'number' || isNaN(price)) {
-      toast({
-        title: "Ошибка",
-        description: `Некорректная цена для услуги "${service.name}"`,
-        variant: "destructive"
-      })
-      return
-    }
-    
-    if (!formData.service_ids.includes(serviceIdNum)) {
-      if (!selectedWheelPosition) {
-        toast({
-          title: "Ошибка",
-          description: "Выберите позицию колеса",
-          variant: "destructive"
-        })
-        return
+    if (isChecked) {
+      const service = services.find(s => s.id === serviceIdNum)
+      if (service) {
+        setSelectedServices(prev => [...prev, {
+          serviceId: serviceIdNum,
+          wheelPosition: "",
+          description: service.name
+        }])
+        setFormData(prev => ({
+          ...prev,
+          service_ids: [...prev.service_ids, serviceIdNum]
+        }))
       }
-      
+    } else {
+      setSelectedServices(prev => prev.filter(s => s.serviceId !== serviceIdNum))
       setFormData(prev => ({
         ...prev,
-        service_ids: [...prev.service_ids, serviceIdNum]
+        service_ids: prev.service_ids.filter(id => id !== serviceIdNum)
       }))
     }
   }
@@ -304,86 +396,143 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     return `${side} ${axleText}${positionText ? ` ${positionText}` : ""}`
   }
 
-  const handleSubmit = async (e) => {
+  // Функция для определения типа колеса по позиции
+  const getWheelType = (position: string) => {
+    if (position.includes("спарка")) return "спарка"
+    return "одиночка"
+  }
+
+  // Функция для получения цены услуги
+  const getServicePrice = (service: Service, wheelType: string) => {
+    const basePrice = service.price
+    
+    // Для услуг снятия и установки колес цена зависит от типа колеса
+    if (service.name.includes("Снятие") || service.name.includes("Установка")) {
+      if (service.name.includes("спарка")) {
+        return wheelType === "спарка" ? basePrice : 0
+      } else {
+        return wheelType === "одиночка" ? basePrice : 0
+      }
+    }
+    
+    return basePrice
+  }
+
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+    
+    if (!formData.worker_id || !formData.vehicle_number || !formData.payment_method) {
+      toast({
+        title: "Ошибка",
+        description: "Заполните все обязательные поля",
+        variant: "destructive"
+      })
+      return
+    }
+
+    if (formData.service_ids.length === 0) {
+      toast({
+        title: "Ошибка",
+        description: "Выберите хотя бы одну услугу",
+        variant: "destructive"
+      })
+      return
+    }
 
     try {
       setSubmitting(true)
-
-      // Проверяем, что client_id существует
-      if (!formData.client_id) {
-        throw new Error("Необходимо выбрать клиента")
-      }
-
-      // Проверяем, что все ID корректно преобразуются в числа
-      const clientId = parseInt(formData.client_id)
-      const workerId = parseInt(formData.worker_id)
-
-      if (isNaN(clientId)) {
-        throw new Error("Некорректный ID клиента")
-      }
-      if (isNaN(workerId)) {
-        throw new Error("Некорректный ID работника")
-      }
-
+      
+      // Подготавливаем данные для отправки
       const orderData = {
-        client_id: clientId,
-        worker_id: workerId,
+        client_id: selectedClient?.id || 0,
+        worker_id: parseInt(formData.worker_id),
         vehicle_number: formData.vehicle_number,
         payment_method: formData.payment_method,
-        total_amount: totalAmount,
-        truck_type: selectedTruckType,
+        total_amount: formData.total_amount,
         services: formData.service_ids.map(serviceId => {
           const service = services.find(s => s.id === serviceId)
-          if (!service) {
-            throw new Error(`Услуга ${serviceId} не найдена`)
-          }
-          const price = service.prices[selectedClientType]
-          if (price === undefined || price === null) {
-            throw new Error(`Для услуги ${service.name} не найдена цена для типа клиента ${selectedClientType}`)
-          }
+          const selectedService = selectedServices.find(s => s.serviceId === serviceId)
           return {
-            service_id: service.id,
-            service_description: service.name,
-            wheel_position: getPositionText(selectedWheelPosition || "all"),
-            price: price
+            service_id: serviceId,
+            description: service?.name || "",
+            wheel_position: selectedService?.wheelPosition || "",
+            price: service?.price || 0
           }
         })
       }
 
-      console.log("Отправляемые данные заказа:", orderData)
-
-      if (order) {
-        await ordersApi.update(order.id, orderData)
-        toast({
-          title: "Успешно",
-          description: "Заказ успешно обновлен",
-        })
-      } else {
-        await ordersApi.create(orderData)
-        toast({
-          title: "Успешно",
-          description: "Заказ успешно создан",
-        })
-      }
-
+      await ordersApi.createManager(orderData as any)
+      
+      toast({
+        title: "Успешно",
+        description: "Заказ создан",
+      })
+      
       onSuccess()
       onOpenChange(false)
-    } catch (error) {
-      console.error("Ошибка при создании заказа:", error)
+      resetForm()
+    } catch (error: any) {
       toast({
-        variant: "destructive",
         title: "Ошибка",
-        description: error.message,
+        description: error.message || "Не удалось создать заказ",
+        variant: "destructive"
       })
     } finally {
       setSubmitting(false)
     }
   }
 
+  // Функция для сброса формы
+  const resetForm = () => {
+    setFormData({
+      worker_id: "",
+      vehicle_number: "",
+      payment_method: "",
+      total_amount: 0,
+      service_ids: []
+    })
+    setSelectedClient(null)
+    setSelectedServices([])
+    setSelectedWheelPosition("")
+  }
+
+  // Обработчик изменения способа оплаты
+  const handlePaymentMethodChange = (method: string) => {
+    setFormData(prev => ({ ...prev, payment_method: method }))
+    
+    if (method === "НАЛИЧНЫЕ") {
+      // Для наличной оплаты автоматически выбираем клиента "Наличка"
+      const cashClient = clients.find(client => client.client_type === "НАЛИЧКА")
+      if (cashClient) {
+        setSelectedClient(cashClient)
+        loadServicesByContract(cashClient.contract_id)
+      }
+    } else {
+      // Для других способов оплаты сбрасываем выбор клиента
+      setSelectedClient(null)
+      setServices([])
+    }
+  }
+
+  // Обработчик выбора клиента
+  const handleClientSelect = (clientId: string) => {
+    const client = clients.find(c => c.id === parseInt(clientId))
+    if (client) {
+      setSelectedClient(client)
+      loadServicesByContract(client.contract_id)
+      
+      // Загружаем машины клиента, если это не наличка
+      if (client.client_type !== "НАЛИЧКА") {
+        fetchClientVehicles(client.id)
+      } else {
+        setClientVehicles([])
+      }
+    }
+  }
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto" aria-describedby="order-dialog-description">
         <DialogHeader>
           <DialogTitle>{order ? "Редактирование заказа" : "Создание нового заказа"}</DialogTitle>
           <DialogDescription id="order-dialog-description">
@@ -399,6 +548,8 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
           <form onSubmit={handleSubmit} className="space-y-6">
             <div className="grid gap-6 md:grid-cols-2">
               <div className="space-y-4">
+                {shouldShowClientSelection && (
+                  <>
                 <div className="space-y-2">
                   <Label>Тип клиента</Label>
                   <Select
@@ -421,26 +572,38 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   </Select>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="client_id">Клиент</Label>
-                  <Select
-                    value={formData.client_id || ""}
-                    onValueChange={(value) => handleSelectChange("client_id", value)}
-                    required
-                    disabled={!selectedClientType}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите клиента" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {filteredClients.map((client) => (
-                        <SelectItem key={client.id} value={client.id?.toString() || ""}>
-                          {client.name}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+              <div className="space-y-2">
+                <Label htmlFor="client_id">Клиент</Label>
+                <Select
+                  value={selectedClient?.id?.toString() || ""}
+                  onValueChange={(value) => handleClientSelect(value)}
+                  required
+                  disabled={formData.payment_method === "НАЛИЧНЫЕ"}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите клиента" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filteredClients.map((client) => (
+                      <SelectItem key={client.id} value={client.id.toString()}>
+                        {client.name} ({client.client_type})
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 </div>
+                  </>
+                )}
+
+                {!shouldShowClientSelection && cashClient && (
+                  <div className="space-y-2">
+                    <Label>Клиент</Label>
+                    <div className="p-3 border rounded-md bg-muted">
+                      <span className="font-medium">{cashClient.name}</span>
+                      <span className="text-sm text-muted-foreground ml-2">(автоматически выбран для наличной оплаты)</span>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-2">
@@ -466,14 +629,34 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
             <div className="space-y-2">
               <Label htmlFor="vehicle_number">Номер автомобиля</Label>
-              <Input
-                id="vehicle_number"
-                name="vehicle_number"
-                placeholder="А123БВ777"
-                value={formData.vehicle_number}
-                onChange={handleChange}
-                required
-              />
+              {selectedClient && selectedClient.client_type !== "НАЛИЧКА" && clientVehicles.length > 0 ? (
+                <Select
+                  value={formData.vehicle_number}
+                  onValueChange={(value) => handleSelectChange("vehicle_number", value)}
+                  disabled={!!(selectedClient && selectedClient.client_type !== "НАЛИЧКА" && loadingVehicles)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Выберите автомобиль" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {clientVehicles.map((vehicle) => (
+                      <SelectItem key={vehicle.id} value={vehicle.number}>
+                        {vehicle.number}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="vehicle_number"
+                  name="vehicle_number"
+                  value={formData.vehicle_number}
+                  onChange={handleChange}
+                  placeholder="Введите номер автомобиля"
+                  required
+                  disabled={!!(selectedClient && selectedClient.client_type !== "НАЛИЧКА" && loadingVehicles)}
+                />
+              )}
             </div>
 
             <div className="space-y-2">
@@ -499,11 +682,23 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   <SelectContent>
                     {services
                       .filter(service => !formData.service_ids.includes(service.id))
-                      .map((service) => (
-                        <SelectItem key={service.id} value={service.id.toString()}>
-                          {service.name} - {service.prices[selectedClientType] || 0} ₽
-                        </SelectItem>
-                      ))}
+                      .map((service) => {
+                        try {
+                          const wheelType = getWheelType(selectedWheelPosition || "all")
+                          const price = getServicePrice(service, wheelType)
+                          return (
+                            <SelectItem key={service.id} value={service.id.toString()}>
+                              {service.name} - {price} ₽ {wheelType === 'спарка' ? '(спарка)' : '(одиночка)'}
+                            </SelectItem>
+                          )
+                        } catch (error) {
+                          return (
+                            <SelectItem key={service.id} value={service.id.toString()}>
+                              {service.name} - ошибка расчета цены
+                            </SelectItem>
+                          )
+                        }
+                      })}
                   </SelectContent>
                 </Select>
 
@@ -512,21 +707,46 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   <div className="space-y-2">
                     {formData.service_ids.map((serviceId) => {
                       const service = services.find(s => s.id === serviceId)
-                      return service ? (
-                        <div key={serviceId} className="flex items-center justify-between rounded-lg border p-3">
-                          <div>
-                            <span className="font-medium">{service.name}</span>
-                            <span className="ml-2 text-sm text-muted-foreground">{service.prices[selectedClientType] || 0} ₽</span>
+                      if (!service) return null
+                      
+                      try {
+                        const wheelType = getWheelType(selectedWheelPosition || "all")
+                        const price = getServicePrice(service, wheelType)
+                        
+                        return (
+                          <div key={serviceId} className="flex items-center justify-between rounded-lg border p-3">
+                            <div>
+                              <span className="font-medium">{service.name}</span>
+                              <span className="ml-2 text-sm text-muted-foreground">
+                                {price} ₽ {wheelType === 'спарка' ? '(спарка)' : '(одиночка)'}
+                              </span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveService(serviceId)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
                           </div>
-                          <Button
-                            variant="ghost"
-                            size="sm"
-                            onClick={() => handleRemoveService(serviceId)}
-                          >
-                            <X className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      ) : null
+                        )
+                      } catch (error) {
+                        return (
+                          <div key={serviceId} className="flex items-center justify-between rounded-lg border p-3">
+                            <div>
+                              <span className="font-medium">{service.name}</span>
+                              <span className="ml-2 text-sm text-red-500">Ошибка расчета цены</span>
+                            </div>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => handleRemoveService(serviceId)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        )
+                      }
                     })}
                   </div>
                 </div>
@@ -538,7 +758,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                 <Label htmlFor="payment_method">Способ оплаты</Label>
                 <Select
                   value={formData.payment_method}
-                  onValueChange={(value) => handleSelectChange("payment_method", value)}
+                  onValueChange={(value) => handlePaymentMethodChange(value)}
                   disabled={loading || submitting}
                 >
                   <SelectTrigger>
@@ -561,15 +781,12 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
             </div>
 
             <div className="space-y-2">
-              <Label htmlFor="description">Описание</Label>
+              <Label htmlFor="notes">Дополнительные заметки</Label>
               <Textarea
-                id="description"
-                name="description"
-                placeholder="Введите описание заказа"
-                value={formData.description}
-                onChange={handleChange}
-                rows={4}
-                required
+                id="notes"
+                name="notes"
+                placeholder="Дополнительные заметки..."
+                className="min-h-[100px]"
               />
             </div>
 

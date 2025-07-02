@@ -62,6 +62,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	api.Use(h.authMiddleware)
 
 	api.GET("/services", h.GetServices)
+	api.GET("/services/:id/prices", h.GetServicePricesByContract) 
 	api.GET("/client-types", h.clientTypes)
 	api.GET("/clients", h.GetClient)
 
@@ -76,9 +77,13 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	manager := api.Group("/manager")
 	manager.Use(h.managerRoleMiddleware)
 	{
-		manager.GET("", h.GetOrders)
-		manager.PUT(":id", h.UpdateOrder)
-		manager.DELETE(":id", h.DeleteOrder)
+		orders := manager.Group("/orders")
+		{
+			orders.GET("", h.GetOrders)
+			orders.POST("", h.CreateOrder)
+			orders.PUT("/:id", h.UpdateOrder)
+			orders.DELETE("/:id", h.DeleteOrder)
+		}
 		manager.GET("/statistics", h.GetStatistics)
 
 		// Управление клиентами
@@ -106,10 +111,34 @@ func (h *Handler) InitRoutes() *gin.Engine {
 		services := manager.Group("/services")
 		{
 			services.GET("", h.GetServices)
+			services.GET("/with-prices", h.GetServicesWithPrices)
 			services.POST("", h.CreateService)
 			services.PUT("/:id", h.UpdateService)
 			services.DELETE("/:id", h.DeleteService)
 		}
+
+		// Управление договорами
+		contracts := manager.Group("/contracts")
+		{
+			contracts.GET("", h.GetContracts)
+			contracts.POST("", h.CreateContract)
+			contracts.GET("/:id", h.GetContract)
+			contracts.PUT("/:id", h.UpdateContract)
+			contracts.DELETE("/:id", h.DeleteContract)
+		}
+
+		// Управление материалами
+		materialCards := manager.Group("/material-cards")
+		{
+			materialCards.GET("", h.GetMaterialCards)
+			materialCards.POST("", h.CreateMaterialCard)
+			materialCards.PUT("/:id", h.UpdateMaterialCard)
+			materialCards.DELETE("/:id", h.DeleteMaterialCard)
+			materialCards.GET("/storage", h.GetStorage)
+			materialCards.POST("/delivery", h.AddDelivery)
+
+		}
+
 	}
 
 	logger.Info("Маршруты API успешно инициализированы")
@@ -174,6 +203,17 @@ func (h *Handler) GetOrders(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
+
+	// Для каждого заказа получаем информацию о клиенте
+	for i := range orders {
+		client, err := h.services.Client.GetById(orders[i].ClientID)
+		if err != nil {
+			logger.Error("Ошибка при получении данных клиента для заказа %d: %v", orders[i].ID, err)
+			continue
+		}
+		orders[i].Client = &client
+	}
+
 	logger.Debug("Успешно получено %d заказов", len(orders))
 	c.JSON(http.StatusOK, orders)
 }
@@ -365,11 +405,15 @@ func (h *Handler) GetWorkers(c *gin.Context) {
 
 func (h *Handler) CreateWorker(c *gin.Context) {
 	var input struct {
-		Name     string `json:"name"`
-		Surname  string `json:"surname"`
-		Email    string `json:"email"`
-		Password string `json:"password"`
-		Role     string `json:"role"`
+		Name         string `json:"name"`
+		Surname      string `json:"surname"`
+		Email        string `json:"email"`
+		Phone        string `json:"phone"`
+		SalarySchema string `json:"salary_schema"`
+		TmpSalary    int    `json:"tmp_salary"`
+		HasCar       bool   `json:"has_car"`
+		Password     string `json:"password"`
+		Role         string `json:"role"`
 	}
 
 	if err := c.BindJSON(&input); err != nil {
@@ -399,9 +443,13 @@ func (h *Handler) CreateWorker(c *gin.Context) {
 
 	// Создаем запись в таблице workers
 	workerInput := models.Worker{
-		Name:    input.Name,
-		Surname: input.Surname,
-		Salary:  0, // Устанавливаем начальную зарплату
+		Name:         input.Name,
+		Surname:      input.Surname,
+		Email:        input.Email,
+		Phone:        input.Phone,
+		SalarySchema: input.SalarySchema,
+		TmpSalary:    input.TmpSalary,
+		HasCar:       input.HasCar,
 	}
 
 	workerId, err := h.services.Worker.Create(workerInput)
@@ -467,7 +515,7 @@ func (h *Handler) DeleteWorker(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
 }
 
-// Методы для работы с услугами
+
 func (h *Handler) GetServices(c *gin.Context) {
 	logger.Debug("Получен запрос на получение списка услуг")
 	services, err := h.services.Service.GetAll()
@@ -477,36 +525,46 @@ func (h *Handler) GetServices(c *gin.Context) {
 		return
 	}
 
-	// Группируем услуги по имени
-	groupedServices := make(map[string]map[string]interface{})
-	for _, service := range services {
-		if _, exists := groupedServices[service.Name]; !exists {
-			groupedServices[service.Name] = make(map[string]interface{})
-			groupedServices[service.Name]["id"] = service.ID
-			groupedServices[service.Name]["prices"] = make(map[string]int)
-		}
-		groupedServices[service.Name]["prices"].(map[string]int)[service.ClientType] = service.Price
-	}
-
-	// Преобразуем в массив для ответа
-	var result []map[string]interface{}
-	for name, data := range groupedServices {
-		result = append(result, map[string]interface{}{
-			"id":     data["id"],
-			"name":   name,
-			"prices": data["prices"],
-		})
-	}
-
 	logger.Info("Успешно получен список услуг")
-	c.JSON(http.StatusOK, result)
+	c.JSON(http.StatusOK, services)
+}
+
+func (h *Handler) GetServicesWithPrices(c *gin.Context) {
+	logger.Debug("Получен запрос на получение всех услуг с ценами по договорам")
+	services, err := h.services.Service.GetAllWithPrices()
+	if err != nil {
+		logger.Error("Ошибка при получении услуг с ценами: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно получено %d услуг с ценами", len(services))
+	c.JSON(http.StatusOK, services)
+}
+
+
+func (h *Handler) GetServicePricesByContract(c *gin.Context) {
+	contractId, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Error("Неверный ID контракта: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID контракта"})
+		return
+	}
+	prices, err := h.services.Service.GetServicePricesByContract(contractId)
+	if err != nil {
+		logger.Error("Ошибка при получении цен услуг по контракту: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось получить цены услуг по контракту"})
+		return
+	}
+	c.JSON(http.StatusOK, prices)
 }
 
 func (h *Handler) CreateService(c *gin.Context) {
 	logger.Debug("Получен запрос на создание услуги")
 	var input struct {
-		Name   string             `json:"name"`
-		Prices map[string]float64 `json:"prices"`
+		Name           string `json:"name"`
+		Price          int    `json:"price"`
+		ContractId     int    `json:"contract_id"`
+		MaterialCardId int    `json:"material_card_id"`
 	}
 
 	if err := c.BindJSON(&input); err != nil {
@@ -515,43 +573,22 @@ func (h *Handler) CreateService(c *gin.Context) {
 		return
 	}
 
-	// Получаем все типы клиентов
-	clientTypes, err := h.services.Client.GetTypes()
+	service := models.Service{
+		Name:           input.Name,
+		Price:          input.Price,
+		ContractID:     input.ContractId,
+		MaterialCardId: input.MaterialCardId,
+	}
+
+	id, err := h.services.Service.Create(service)
 	if err != nil {
-		logger.Error("Ошибка при получении типов клиентов: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось получить типы клиентов"})
+		logger.Error("Ошибка при создании услуги: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при создании услуги"})
 		return
 	}
 
-	// Проверяем, что для каждого типа клиента указана цена
-	for _, clientType := range clientTypes {
-		if _, exists := input.Prices[clientType]; !exists {
-			logger.Warning("Не указана цена для типа клиента: %s", clientType)
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("не указана цена для типа клиента: %s", clientType)})
-			return
-		}
-	}
-
-	// Создаем услугу для каждого типа клиента
-	var serviceIds []int
-	for clientType, price := range input.Prices {
-		service := models.Service{
-			Name:       input.Name,
-			ClientType: clientType,
-			Price:      int(price),
-		}
-
-		id, err := h.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка при создании услуги для типа клиента %s: %v", clientType, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("ошибка при создании услуги для типа клиента %s: %v", clientType, err)})
-			return
-		}
-		serviceIds = append(serviceIds, id)
-	}
-
-	logger.Info("Успешно созданы услуги с ID: %v", serviceIds)
-	c.JSON(http.StatusCreated, gin.H{"ids": serviceIds})
+	logger.Info("Успешно создана услуга с ID: %d", id)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
 }
 
 func (h *Handler) UpdateService(c *gin.Context) {
@@ -564,8 +601,10 @@ func (h *Handler) UpdateService(c *gin.Context) {
 
 	logger.Debug("Получен запрос на обновление услуги ID:%d", id)
 	var input struct {
-		Name   string             `json:"name"`
-		Prices map[string]float64 `json:"prices"`
+		Name           string `json:"name"`
+		Price          int    `json:"price"`
+		ContractId     int    `json:"contract_id"`
+		MaterialCardId int    `json:"material_card_id"`
 	}
 
 	if err := c.BindJSON(&input); err != nil {
@@ -574,36 +613,17 @@ func (h *Handler) UpdateService(c *gin.Context) {
 		return
 	}
 
-	// Получаем все типы клиентов
-	clientTypes, err := h.services.Client.GetTypes()
-	if err != nil {
-		logger.Error("Ошибка при получении типов клиентов: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "не удалось получить типы клиентов"})
+	service := models.Service{
+		Name:           input.Name,
+		Price:          input.Price,
+		ContractID:     input.ContractId,
+		MaterialCardId: input.MaterialCardId,
+	}
+
+	if err := h.services.Service.Update(id, service); err != nil {
+		logger.Error("Ошибка при обновлении услуги ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при обновлении услуги"})
 		return
-	}
-
-	// Проверяем, что для каждого типа клиента указана цена
-	for _, clientType := range clientTypes {
-		if _, exists := input.Prices[clientType]; !exists {
-			logger.Warning("Не указана цена для типа клиента: %s", clientType)
-			c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("не указана цена для типа клиента: %s", clientType)})
-			return
-		}
-	}
-
-	// Обновляем услугу для каждого типа клиента
-	for clientType, price := range input.Prices {
-		service := models.Service{
-			Name:       input.Name,
-			ClientType: clientType,
-			Price:      int(price),
-		}
-
-		if err := h.services.Service.Update(id, service); err != nil {
-			logger.Error("Ошибка при обновлении услуги для типа клиента %s: %v", clientType, err)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("ошибка при обновлении услуги для типа клиента %s: %v", clientType, err)})
-			return
-		}
 	}
 
 	logger.Info("Успешно обновлена услуга ID:%d", id)
@@ -856,4 +876,222 @@ func (h *Handler) GetCarsTemplate(c *gin.Context) {
 	c.DataFromReader(http.StatusOK, int64(template.Len()), "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", template, nil)
 
 	logger.Info("Шаблон Excel файла успешно отправлен")
+}
+
+// Методы для работы с договорами
+func (h *Handler) GetContracts(c *gin.Context) {
+	logger.Debug("Получен запрос на получение списка договоров")
+	contracts, err := h.services.Contract.GetAll()
+	if err != nil {
+		logger.Error("Ошибка при получении списка договоров: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно получено %d договоров", len(contracts))
+	c.JSON(http.StatusOK, contracts)
+}
+
+func (h *Handler) CreateContract(c *gin.Context) {
+	logger.Debug("Получен запрос на создание договора")
+	var input models.Contract
+	if err := c.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при создании договора: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	id, err := h.services.Contract.Create(input)
+	if err != nil {
+		logger.Error("Ошибка при создании договора: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно создан договор ID:%d", id)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func (h *Handler) GetContract(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID договора: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на получение договора ID:%d", id)
+	contracts, err := h.services.Contract.GetAll()
+	if err != nil {
+		logger.Error("Ошибка при получении списка договоров: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Ищем договор по ID
+	for _, contract := range contracts {
+		if contract.ID == id {
+			logger.Debug("Успешно найден договор ID:%d", id)
+			c.JSON(http.StatusOK, contract)
+			return
+		}
+	}
+
+	logger.Warning("Договор с ID:%d не найден", id)
+	c.JSON(http.StatusNotFound, gin.H{"error": "договор не найден"})
+}
+
+func (h *Handler) UpdateContract(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID договора при обновлении: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на обновление договора ID:%d", id)
+	var input models.Contract
+	if err := c.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при обновлении договора: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	if err := h.services.Contract.Update(id, input); err != nil {
+		logger.Error("Ошибка при обновлении договора ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно обновлен договор ID:%d", id)
+	c.JSON(http.StatusOK, gin.H{"status": "успешно обновлено"})
+}
+
+func (h *Handler) DeleteContract(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID договора при удалении: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на удаление договора ID:%d", id)
+	if err := h.services.Contract.Delete(id); err != nil {
+		logger.Error("Ошибка при удалении договора ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно удален договор ID:%d", id)
+	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
+}
+
+
+func (h *Handler) GetMaterialCards(c *gin.Context) {
+	logger.Debug("Получен запрос на получение списка материалов")
+	materialCards, err := h.services.MaterialCard.GetAll()
+	if err != nil {
+		logger.Error("Ошибка при получении списка материалов: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно получено %d материалов", len(materialCards))
+	c.JSON(http.StatusOK, materialCards)
+}
+
+func (h *Handler) CreateMaterialCard(c *gin.Context) {
+	logger.Debug("Получен запрос на создание материала")
+	var input models.MaterialCard
+	if err := c.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при создании материала: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	id, err := h.services.MaterialCard.Create(input)
+	if err != nil {
+		logger.Error("Ошибка при создании материала: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно создан материал ID:%d", id)
+	c.JSON(http.StatusCreated, gin.H{"id": id})
+}
+
+func (h *Handler) UpdateMaterialCard(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID материала при обновлении: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на обновление материала ID:%d", id)
+	var input models.MaterialCard
+	if err := c.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при обновлении материала: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	if err := h.services.MaterialCard.Update(id, input); err != nil {
+		logger.Error("Ошибка при обновлении материала ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно обновлен материал ID:%d", id)
+	c.JSON(http.StatusOK, gin.H{"status": "успешно обновлено"})
+}
+
+func (h *Handler) DeleteMaterialCard(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID материала при удалении: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на удаление материала ID:%d", id)
+	if err := h.services.MaterialCard.Delete(id); err != nil {
+		logger.Error("Ошибка при удалении материала ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно удален материал ID:%d", id)
+	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
+}
+
+func (h *Handler) GetStorage(c *gin.Context) {
+	var storage models.Storage
+	logger.Debug("Получен запрос на получение списка материалов на складе")
+	storage, err := h.services.MaterialCard.GetStorage()
+	if err != nil {
+		logger.Error("Ошибка при получении списка материалов на складе: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Debug("Успешно получен список материалов на складе")
+	c.JSON(http.StatusOK, storage)
+}
+
+
+func (h *Handler) AddDelivery(c *gin.Context) {
+	var delivery models.Storage
+	logger.Debug("Получен запрос на добавление доставки")
+	if err := c.BindJSON(&delivery); err != nil {
+		logger.Warning("Ошибка привязки JSON при добавлении доставки: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+	err := h.services.MaterialCard.AddDelivery(delivery)
+	if err != nil {
+		logger.Error("Ошибка при добавлении материалов на склад: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно добавлены материалы на склад")
+	c.JSON(http.StatusOK, delivery)
 }

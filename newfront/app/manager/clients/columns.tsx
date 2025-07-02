@@ -15,9 +15,13 @@ import { ClientVehiclesDialog } from "@/components/clients/client-vehicles-dialo
 export type Client = {
   id: number
   name: string
-  phone: string
-  email: string
+  owner_phone: string
+  manager_phone: string
   client_type: string
+  contract_id: number
+  car_numbers: string[]
+  created_at: string
+  updated_at: string
 }
 
 export const columns: ColumnDef<Client>[] = [
@@ -26,19 +30,22 @@ export const columns: ColumnDef<Client>[] = [
     header: "Имя",
   },
   {
-    accessorKey: "phone",
-    header: "Телефон",
+    accessorKey: "owner_phone",
+    header: "Телефон владельца",
   },
   {
-    accessorKey: "email",
-    header: "Email",
+    accessorKey: "manager_phone",
+    header: "Телефон менеджера",
   },
   {
     accessorKey: "client_type",
     header: "Тип клиента",
     cell: ({ row }) => {
       const type = row.getValue("client_type") as string
-      return type === "physical" ? "Физическое лицо" : "Юридическое лицо"
+      return type === "ФИЗЛИЦА" ? "Физическое лицо" : 
+             type === "КОНТРАГЕНТЫ" ? "Контрагент" : 
+             type === "АГРЕГАТОРЫ" ? "Агрегатор" : 
+             type === "НАЛИЧКА" ? "Наличка" : type
     },
   },
   {

@@ -4,8 +4,6 @@ import (
 	"fmt"
 	"go-hinomontaj/models"
 	"go-hinomontaj/pkg/logger"
-
-	"golang.org/x/crypto/bcrypt"
 )
 
 type WorkerService interface {
@@ -36,32 +34,7 @@ func (s *WorkerServiceImpl) Create(worker models.Worker) (int, error) {
 		return 0, fmt.Errorf("ошибка при создании работника: %w", err)
 	}
 
-	// Генерируем email и пароль для пользователя
-	email := fmt.Sprintf("%s.%s@hinomontaj.com", worker.Name, worker.Surname)
-	password := "default123" // В продакшене нужно генерировать случайный пароль
-
-	// Хешируем пароль
-	hashedPassword, err := bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
-	if err != nil {
-		logger.Error("Ошибка хеширования пароля: %v", err)
-		return 0, fmt.Errorf("ошибка при создании пользователя: %w", err)
-	}
-
-	// Создаем пользователя
-	user := models.User{
-		Name:     worker.Name,
-		Email:    email,
-		Password: string(hashedPassword),
-		Role:     "worker",
-	}
-
-	_, err = s.repo.CreateUser(user)
-	if err != nil {
-		logger.Error("Ошибка при создании пользователя для работника: %v", err)
-		return 0, fmt.Errorf("ошибка при создании пользователя: %w", err)
-	}
-
-	logger.Info("Создан новый работник ID:%d с учетной записью %s", workerId, email)
+	logger.Info("Создан новый работник ID:%d", workerId)
 	return workerId, nil
 }
 

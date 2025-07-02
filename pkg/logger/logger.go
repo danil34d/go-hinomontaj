@@ -32,7 +32,7 @@ func getCallerInfo() string {
 	pc, file, line, ok := runtime.Caller(3)
 	if !ok {
 		return "unknown"
-	}
+}
 
 	// Получаем имя функции
 	fn := runtime.FuncForPC(pc)

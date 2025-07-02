@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { useToast } from "@/components/ui/use-toast"
-import { ordersApi, clientsApi } from "@/lib/api"
+import { ordersApi, clientsApi, Order, Client } from "@/lib/api"
 import { Plus, Search, Pencil, Trash2 } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
@@ -24,11 +24,11 @@ import {
 import { Badge } from "@/components/ui/badge"
 
 export default function ManagerOrdersPage() {
-  const [orders, setOrders] = useState([])
-  const [clients, setClients] = useState([])
+  const [orders, setOrders] = useState<Order[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
-  const [selectedOrder, setSelectedOrder] = useState(null)
+  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
   const { toast } = useToast()
@@ -67,7 +67,7 @@ export default function ManagerOrdersPage() {
     }
   }
 
-  const handleEdit = (order) => {
+  const handleEdit = (order: Order) => {
     setSelectedOrder(order)
     setIsDialogOpen(true)
   }
@@ -96,7 +96,7 @@ export default function ManagerOrdersPage() {
     const searchLower = searchQuery.toLowerCase()
     const clientName = order.client?.name?.toLowerCase() || ""
     const vehicleNumber = order.vehicle_number?.toLowerCase() || ""
-    const services = order.services?.map(s => s.name?.toLowerCase() || "").join(" ") || ""
+    const services = order.services?.map(s => s.service_description?.toLowerCase() || "").join(" ") || ""
 
     return (
       clientName.includes(searchLower) ||
@@ -105,7 +105,7 @@ export default function ManagerOrdersPage() {
     )
   }) || []
 
-  const getPaymentMethodText = (method) => {
+  const getPaymentMethodText = (method: string) => {
     switch (method) {
       case "cash":
         return "Наличные"
@@ -118,7 +118,7 @@ export default function ManagerOrdersPage() {
     }
   }
 
-  const getClientTypeText = (type) => {
+  const getClientTypeText = (type: string) => {
     switch (type) {
       case "ФИЗЛИЦА":
         return "Физическое лицо"
@@ -207,7 +207,7 @@ export default function ManagerOrdersPage() {
                             <div key={`${order.id}-${service.service_id}`} className="flex items-center gap-1">
                               <Badge variant="secondary">
                                 {service.service_description}
-                              </Badge>
+                            </Badge>
                               <span className="text-sm text-muted-foreground">
                                 {service.wheel_position && `(${service.wheel_position})`}
                               </span>

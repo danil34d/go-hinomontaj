@@ -204,7 +204,7 @@ export default function WorkerOrdersPage() {
                           <div key={`${order.id}-${service.service_id}`} className="flex items-center gap-1">
                             <Badge variant="secondary">
                               {service.service_description}
-                            </Badge>
+                          </Badge>
                             <span className="text-sm text-muted-foreground">
                               {service.wheel_position && `(${service.wheel_position})`}
                             </span>

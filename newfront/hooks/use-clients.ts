@@ -6,9 +6,13 @@ import { toast } from "sonner"
 export type Client = {
   id: number
   name: string
-  phone: string
-  email: string
+  owner_phone: string
+  manager_phone: string
   client_type: string
+  contract_id: number
+  car_numbers: string[]
+  created_at: string
+  updated_at: string
 }
 
 export function useClients() {

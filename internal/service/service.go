@@ -13,11 +13,13 @@ type DBConfig struct {
 }
 
 type Services struct {
-	Auth    Auth
-	Worker  Worker
-	Client  Client
-	Order   Order
-	Service Service
+	Auth         Auth
+	Worker       Worker
+	Client       Client
+	Order        Order
+	Service      Service
+	Contract     Contract
+	MaterialCard MaterialCard
 }
 
 type ServicesConfig struct {
@@ -27,11 +29,13 @@ type ServicesConfig struct {
 
 func NewServices(cfg ServicesConfig) *Services {
 	return &Services{
-		Auth:    NewAuthService(cfg.Repository, cfg.SigningKey),
-		Worker:  NewWorkerService(cfg.Repository),
-		Client:  NewClientService(cfg.Repository),
-		Order:   NewOrderService(cfg.Repository),
-		Service: NewServiceService(cfg.Repository),
+		Auth:         NewAuthService(cfg.Repository, cfg.SigningKey),
+		Worker:       NewWorkerService(cfg.Repository),
+		Client:       NewClientService(cfg.Repository),
+		Order:        NewOrderService(cfg.Repository),
+		Service:      NewServiceService(cfg.Repository),
+		Contract:     NewContractService(cfg.Repository),
+		MaterialCard: NewMaterialCardService(cfg.Repository),
 	}
 }
 
@@ -75,8 +79,26 @@ type Order interface {
 type Service interface {
 	Create(service models.Service) (int, error)
 	GetAll() ([]models.Service, error)
+	GetAllWithPrices() ([]models.ServiceWithPrices, error)
 	Update(id int, service models.Service) error
 	Delete(id int) error
+	GetServicePricesByContract(contractID int) ([]models.Service, error)
+}
+
+type Contract interface {
+	Create(contract models.Contract) (int, error)
+	GetAll() ([]models.Contract, error)
+	Update(id int, contract models.Contract) error
+	Delete(id int) error
+}
+
+type MaterialCard interface {
+	Create(materialCard models.MaterialCard) (int, error)
+	GetAll() ([]models.MaterialCard, error)
+	Update(id int, materialCard models.MaterialCard) error
+	Delete(id int) error
+	GetStorage() (models.Storage, error)
+	AddDelivery(delivery models.Storage) error
 }
 
 type Repository interface {
@@ -109,8 +131,24 @@ type Repository interface {
 	//Services
 	CreateService(service models.Service) (int, error)
 	GetAllServices() ([]models.Service, error)
+	GetAllWithPrices() ([]models.ServiceWithPrices, error)
 	UpdateService(id int, service models.Service) error
 	DeleteService(id int) error
+	GetServicePricesByContract(contractID int) ([]models.Service, error)
+
+	// Contracts
+	CreateContract(contract models.Contract) (int, error)
+	GetAllContracts() ([]models.Contract, error)
+	UpdateContract(id int, contract models.Contract) error
+	DeleteContract(id int) error
+
+	// MaterialCards
+	CreateMaterialCard(materialCard models.MaterialCard) (int, error)
+	GetAllMaterialCards() ([]models.MaterialCard, error)
+	UpdateMaterialCard(id int, materialCard models.MaterialCard) error
+	DeleteMaterialCard(id int) error
+	GetStorage() (models.Storage, error)
+	AddDelivery(delivery models.Storage) error
 
 	// Orders
 	CreateOrder(order models.Order) (int, error)

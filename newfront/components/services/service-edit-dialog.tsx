@@ -1,100 +1,111 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { useToast } from "@/components/ui/use-toast"
-import { servicesApi, clientTypesApi } from "@/lib/api"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import { Service, servicesApi, contractsApi, Contract } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 
 interface ServiceEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  service: {
-    id: number
-    name: string
-    prices: Record<string, number>
-  }
+  service: Service
   onSuccess: () => void
 }
 
 export function ServiceEditDialog({ open, onOpenChange, service, onSuccess }: ServiceEditDialogProps) {
   const [formData, setFormData] = useState({
     name: "",
-    prices: {} as Record<string, number>,
+    price: "",
+    contract_id: "",
+    material_card_id: "1"
   })
+  const [contracts, setContracts] = useState<Contract[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
-  const [clientTypes, setClientTypes] = useState<string[]>([])
   const { toast } = useToast()
+
+  const fetchContracts = async () => {
+    try {
+      const data = await contractsApi.getAll()
+      setContracts(data)
+    } catch (error: any) {
+      console.error("Ошибка при загрузке договоров:", error)
+    }
+  }
 
   useEffect(() => {
     if (open) {
-      // Загружаем типы клиентов при открытии диалога
-      clientTypesApi.getAll()
-        .then(types => {
-          setClientTypes(types)
-          // Инициализируем цены из существующей услуги
-          setFormData({
-            name: service.name,
-            prices: { ...service.prices }
-          })
-        })
-        .catch(error => {
-          toast({
-            title: "Ошибка",
-            description: "Не удалось загрузить типы клиентов",
-            variant: "destructive",
-          })
-        })
+      fetchContracts()
     }
-  }, [open, service, toast])
+  }, [open])
+
+  useEffect(() => {
+    if (service) {
+      setFormData({
+        name: service.name,
+        price: service.price.toString(),
+        contract_id: service.contract_id.toString(),
+        material_card_id: service.material_card.toString()
+      })
+    }
+  }, [service])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
-    if (name.startsWith("price_")) {
-      const clientType = name.replace("price_", "")
-      setFormData(prev => ({
-        ...prev,
-        prices: {
-          ...prev.prices,
-          [clientType]: Number(value.replace(/\D/g, ""))
-        }
-      }))
-    } else {
-      setFormData(prev => ({ ...prev, [name]: value }))
-    }
+    setFormData((prev) => ({ ...prev, [name]: value }))
+  }
+
+  const handleSelectChange = (name: string, value: string) => {
+    if (!value) return
+    setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    setIsSubmitting(true)
+    
+    if (!formData.name || !formData.price || !formData.contract_id) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Заполните все обязательные поля",
+      })
+      return
+    }
 
     try {
-      // Проверяем, что все поля заполнены
-      if (!formData.name.trim()) {
-        throw new Error("Название услуги обязательно")
-      }
-
-      // Проверяем, что все цены заполнены
-      for (const type of clientTypes) {
-        if (!formData.prices[type]) {
-          throw new Error(`Необходимо указать цену для типа клиента: ${type}`)
-        }
-      }
-
-      await servicesApi.update(service.id, formData)
+      setIsSubmitting(true)
+      await servicesApi.update(service.id, {
+        name: formData.name,
+        price: parseInt(formData.price),
+        contract_id: parseInt(formData.contract_id),
+        material_card_id: parseInt(formData.material_card_id)
+      })
       toast({
-        title: "Успех",
-        description: "Услуга успешно обновлена",
+        title: "Успешно",
+        description: "Услуга обновлена",
       })
       onSuccess()
       onOpenChange(false)
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: error instanceof Error ? error.message : "Не удалось обновить услугу",
         variant: "destructive",
+        title: "Ошибка",
+        description: error.message || "Не удалось обновить услугу",
       })
     } finally {
       setIsSubmitting(false)
@@ -103,9 +114,12 @@ export function ServiceEditDialog({ open, onOpenChange, service, onSuccess }: Se
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent aria-describedby="service-edit-description">
         <DialogHeader>
           <DialogTitle>Редактировать услугу</DialogTitle>
+          <DialogDescription id="service-edit-description">
+            Измените данные услуги
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
@@ -120,19 +134,52 @@ export function ServiceEditDialog({ open, onOpenChange, service, onSuccess }: Se
             />
           </div>
 
-          {clientTypes.map(type => (
-            <div key={type} className="space-y-2">
-              <Label htmlFor={`price_${type}`}>Цена для {type}</Label>
-              <Input
-                id={`price_${type}`}
-                name={`price_${type}`}
-                value={formData.prices[type] || ""}
-                onChange={handleChange}
-                placeholder="Введите цену"
-                required
-              />
-            </div>
-          ))}
+          <div className="space-y-2">
+            <Label htmlFor="price">Цена</Label>
+            <Input
+              id="price"
+              name="price"
+              type="number"
+              value={formData.price}
+              onChange={handleChange}
+              placeholder="Введите цену"
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="contract_id">Договор</Label>
+            <Select
+              value={formData.contract_id}
+              onValueChange={(value) => handleSelectChange("contract_id", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите договор" />
+              </SelectTrigger>
+              <SelectContent>
+                {contracts.map((contract) => (
+                  <SelectItem key={contract.id} value={contract.id.toString()}>
+                    {contract.number} ({contract.client_type})
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="material_card_id">Технологическая карта</Label>
+            <Select
+              value={formData.material_card_id}
+              onValueChange={(value) => handleSelectChange("material_card_id", value)}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите технологическую карту" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="1">Технологическая карта #1</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
 
           <div className="flex justify-end space-x-2">
             <Button

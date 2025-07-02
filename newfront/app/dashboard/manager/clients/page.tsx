@@ -15,7 +15,8 @@ import { ClientVehiclesDialog } from "@/components/clients/client-vehicles-dialo
 interface Client {
   id: number
   name: string
-  phone: string
+  owner_phone: string
+  manager_phone: string
   client_type: string
 }
 
@@ -71,7 +72,8 @@ export default function ClientsPage() {
 
   const filteredClients = clients.filter(client =>
     client.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    client.phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.owner_phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    client.manager_phone.toLowerCase().includes(searchQuery.toLowerCase()) ||
     client.client_type.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
@@ -103,7 +105,7 @@ export default function ClientsPage() {
             <TableHeader>
               <TableRow>
                 <TableHead>Имя</TableHead>
-                <TableHead>Телефон</TableHead>
+                <TableHead>Телефон владельца</TableHead>
                 <TableHead>Тип клиента</TableHead>
                 <TableHead className="w-[50px]"></TableHead>
               </TableRow>
@@ -125,7 +127,7 @@ export default function ClientsPage() {
                 filteredClients.map((client) => (
                   <TableRow key={client.id}>
                     <TableCell>{client.name}</TableCell>
-                    <TableCell>{client.phone}</TableCell>
+                    <TableCell>{client.owner_phone}</TableCell>
                     <TableCell>{client.client_type}</TableCell>
                     <TableCell>
                       <DropdownMenu>
@@ -160,19 +162,16 @@ export default function ClientsPage() {
       </div>
 
       <ClientFormDialog
-        open={isCreateDialogOpen}
-        onOpenChange={setIsCreateDialogOpen}
+        open={isCreateDialogOpen || !!editingClient}
+        onOpenChange={(open) => {
+          if (!open) {
+            setIsCreateDialogOpen(false)
+            setEditingClient(null)
+          }
+        }}
+        client={editingClient}
         onSuccess={fetchClients}
       />
-
-      {editingClient && (
-        <ClientFormDialog
-          open={!!editingClient}
-          onOpenChange={(open) => !open && setEditingClient(null)}
-          client={editingClient}
-          onSuccess={fetchClients}
-        />
-      )}
 
       {selectedClient && (
         <ClientVehiclesDialog

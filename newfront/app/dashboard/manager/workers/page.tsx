@@ -7,19 +7,19 @@ import { Input } from "@/components/ui/input"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
 import { useToast } from "@/components/ui/use-toast"
-import { workersApi } from "@/lib/api"
+import { workersApi, Worker } from "@/lib/api"
 import { Edit, MoreHorizontal, Plus, Search, Trash } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { WorkerFormDialog } from "@/components/workers/worker-form-dialog"
 import { WorkerEditDialog } from "@/components/workers/worker-edit-dialog"
 
 export default function WorkersPage() {
-  const [workers, setWorkers] = useState([])
+  const [workers, setWorkers] = useState<Worker[]>([])
   const [loading, setLoading] = useState(true)
   const [searchQuery, setSearchQuery] = useState("")
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [isEditDialogOpen, setIsEditDialogOpen] = useState(false)
-  const [selectedWorker, setSelectedWorker] = useState(null)
+  const [selectedWorker, setSelectedWorker] = useState<Worker | null>(null)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -43,7 +43,7 @@ export default function WorkersPage() {
     }
   }
 
-  const handleDeleteWorker = async (id) => {
+  const handleDeleteWorker = async (id: number) => {
     try {
       const user = JSON.parse(localStorage.getItem("user"))
       if (user.role !== "manager") {
@@ -70,7 +70,7 @@ export default function WorkersPage() {
     }
   }
 
-  const handleEdit = (worker) => {
+  const handleEdit = (worker: Worker) => {
     setSelectedWorker(worker)
     setIsEditDialogOpen(true)
   }
@@ -78,7 +78,9 @@ export default function WorkersPage() {
   const filteredWorkers = workers.filter(
     (worker) =>
       worker.name?.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      worker.email?.toLowerCase().includes(searchQuery.toLowerCase()),
+      worker.surname?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      worker.email?.toLowerCase().includes(searchQuery.toLowerCase()) ||
+      worker.phone?.toLowerCase().includes(searchQuery.toLowerCase()),
   )
 
   return (
@@ -118,14 +120,16 @@ export default function WorkersPage() {
                   <TableHead>Имя</TableHead>
                   <TableHead>Фамилия</TableHead>
                   <TableHead>Email</TableHead>
-                  <TableHead>Роль</TableHead>
+                  <TableHead>Телефон</TableHead>
+                  <TableHead>Зарплата</TableHead>
+                  <TableHead>Схема</TableHead>
                   <TableHead className="w-[80px]"></TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {filteredWorkers.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={6} className="h-24 text-center">
+                    <TableCell colSpan={8} className="h-24 text-center">
                       Сотрудники не найдены
                     </TableCell>
                   </TableRow>
@@ -135,10 +139,12 @@ export default function WorkersPage() {
                       <TableCell>#{worker.id}</TableCell>
                       <TableCell>{worker.name}</TableCell>
                       <TableCell>{worker.surname}</TableCell>
-                      <TableCell>{worker.email}</TableCell>
+                      <TableCell>{worker.email || "Н/Д"}</TableCell>
+                      <TableCell>{worker.phone || "Н/Д"}</TableCell>
+                      <TableCell>{worker.tmp_salary || 0}</TableCell>
                       <TableCell>
-                        <Badge variant={worker.role === "manager" ? "default" : "secondary"}>
-                          {worker.role === "manager" ? "Менеджер" : "Работник"}
+                        <Badge variant={worker.salary_schema === "fixed" ? "default" : "secondary"}>
+                          {worker.salary_schema === "fixed" ? "Фиксированная" : "Процентная"}
                         </Badge>
                       </TableCell>
                       <TableCell>

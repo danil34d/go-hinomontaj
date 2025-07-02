@@ -60,13 +60,11 @@ func (s *AuthServiceImpl) Register(input models.SignUpInput) (string, models.Use
 		return "", models.User{}, err
 	}
 
-	// Если пользователь работник, создаем запись в таблице workers
 	if user.Role == "worker" {
 		logger.Debug("Создание записи в таблице workers для пользователя %s", user.Email)
 		worker := models.Worker{
 			Name:    user.Name,
 			Surname: "", // Пока оставляем пустым, можно добавить в форму регистрации
-			Salary:  0,  // Начальная зарплата
 		}
 		workerId, err := s.repo.CreateWorker(worker)
 		if err != nil {

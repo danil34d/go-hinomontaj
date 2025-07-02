@@ -191,37 +191,37 @@ export function ClientVehiclesDialog({ open, onOpenChange, clientId, clientName 
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Добавить одну машину</h3>
                 <form onSubmit={handleAddCar} className="space-y-4">
-                  <div className="space-y-2">
-                    <Label htmlFor="number">Номер</Label>
-                    <Input
-                      id="number"
+            <div className="space-y-2">
+              <Label htmlFor="number">Номер</Label>
+              <Input
+                id="number"
                       value={carData.number}
                       onChange={(e) => setCarData({ ...carData, number: e.target.value })}
-                      required
-                    />
-                  </div>
-                  <div className="space-y-2">
-                    <Label htmlFor="model">Модель</Label>
-                    <Input
-                      id="model"
+                required
+              />
+            </div>
+            <div className="space-y-2">
+              <Label htmlFor="model">Модель</Label>
+              <Input
+                id="model"
                       value={carData.model}
                       onChange={(e) => setCarData({ ...carData, model: e.target.value })}
-                    />
-                  </div>
-                  <div className="space-y-2">
+              />
+            </div>
+            <div className="space-y-2">
                     <Label htmlFor="year">Год</Label>
-                    <Input
-                      id="year"
-                      type="number"
+              <Input
+                id="year"
+                type="number"
                       value={carData.year}
                       onChange={(e) => setCarData({ ...carData, year: e.target.value })}
-                    />
-                  </div>
+              />
+            </div>
                   <Button type="submit" disabled={isLoading}>
                     {isLoading ? "Добавление..." : "Добавить"}
                   </Button>
                 </form>
-              </div>
+          </div>
 
               <div className="space-y-4">
                 <h3 className="text-lg font-medium">Загрузить список из Excel</h3>
@@ -232,8 +232,8 @@ export function ClientVehiclesDialog({ open, onOpenChange, clientId, clientName 
                   <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
                     <Download className="mr-2 h-4 w-4" />
                     Скачать шаблон
-                  </Button>
-                </div>
+            </Button>
+          </div>
                 <div className="grid w-full max-w-sm items-center gap-1.5">
                   <input
                     type="file"
@@ -244,7 +244,7 @@ export function ClientVehiclesDialog({ open, onOpenChange, clientId, clientName 
                   />
                 </div>
               </div>
-            </div>
+        </div>
           </TabsContent>
         </Tabs>
       </DialogContent>

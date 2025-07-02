@@ -24,7 +24,10 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
     name: "",
     surname: "",
     email: "",
-    role: "",
+    phone: "",
+    salary_schema: "fixed",
+    tmp_salary: 0,
+    has_car: false,
     password: "",
   })
 
@@ -34,7 +37,10 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
         name: worker.name || "",
         surname: worker.surname || "",
         email: worker.email || "",
-        role: worker.role || "worker",
+        phone: worker.phone || "",
+        salary_schema: worker.salary_schema || "fixed",
+        tmp_salary: worker.tmp_salary || 0,
+        has_car: worker.has_car || false,
         password: "", // Не заполняем пароль при редактировании
       })
     }
@@ -55,7 +61,7 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
     try {
       setSubmitting(true)
 
-      if (!formData.name || !formData.surname || !formData.email) {
+      if (!formData.name || !formData.surname || !formData.email || !formData.phone) {
         throw new Error("Необходимо заполнить все обязательные поля")
       }
 
@@ -87,10 +93,10 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby="worker-edit-description">
         <DialogHeader>
           <DialogTitle>Редактирование сотрудника</DialogTitle>
-          <DialogDescription>
+          <DialogDescription id="worker-edit-description">
             Измените данные сотрудника
           </DialogDescription>
         </DialogHeader>
@@ -134,20 +140,58 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="role">Роль</Label>
+            <Label htmlFor="phone">Телефон</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              placeholder="Введите телефон"
+              value={formData.phone}
+              onChange={handleChange}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="salary_schema">Схема оплаты</Label>
             <Select
-              value={formData.role}
-              onValueChange={(value) => handleSelectChange("role", value)}
+              value={formData.salary_schema}
+              onValueChange={(value) => handleSelectChange("salary_schema", value)}
               required
             >
               <SelectTrigger>
-                <SelectValue placeholder="Выберите роль" />
+                <SelectValue placeholder="Выберите схему оплаты" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="worker">Работник</SelectItem>
-                <SelectItem value="manager">Менеджер</SelectItem>
+                <SelectItem value="fixed">Фиксированная</SelectItem>
+                <SelectItem value="percentage">Процентная</SelectItem>
               </SelectContent>
             </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tmp_salary">Зарплата</Label>
+            <Input
+              id="tmp_salary"
+              name="tmp_salary"
+              type="number"
+              placeholder="Введите зарплату"
+              value={formData.tmp_salary}
+              onChange={handleChange}
+              required
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              id="has_car"
+              name="has_car"
+              type="checkbox"
+              checked={formData.has_car}
+              onChange={(e) => setFormData(prev => ({ ...prev, has_car: e.target.checked }))}
+              className="rounded"
+            />
+            <Label htmlFor="has_car">Есть машина</Label>
           </div>
 
           <div className="space-y-2">

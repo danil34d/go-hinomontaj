@@ -1,11 +1,11 @@
 import { useState, useEffect } from "react"
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { clientsApi, clientTypesApi } from "@/lib/api"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
+import { clientsApi, clientTypesApi, contractsApi, Contract } from "@/lib/api"
 
 interface ClientFormDialogProps {
   open: boolean
@@ -13,8 +13,10 @@ interface ClientFormDialogProps {
   client?: {
     id: number
     name: string
-    phone: string
+    owner_phone: string
+    manager_phone: string
     client_type: string
+    contract_id?: number
   }
   onSuccess: () => void
 }
@@ -22,43 +24,62 @@ interface ClientFormDialogProps {
 export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: ClientFormDialogProps) {
   const [formData, setFormData] = useState({
     name: "",
-    phone: "",
+    owner_phone: "",
+    manager_phone: "",
     client_type: "",
+    contract_id: "",
     new_client_type: "",
+    car_numbers: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [clientTypes, setClientTypes] = useState<string[]>([])
+  const [contracts, setContracts] = useState<Contract[]>([])
   const [isNewType, setIsNewType] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
     if (open) {
-      // Загружаем типы клиентов при открытии диалога
-      clientTypesApi.getAll()
-        .then(types => {
+      // Загружаем типы клиентов и договоры при открытии диалога
+      Promise.all([
+        clientTypesApi.getAll().catch(() => ["Наличка", "Контрагент", "Агрегатор"]),
+        contractsApi.getAll().catch(() => [])
+      ]).then(([types, contractsData]) => {
           setClientTypes(types)
+        setContracts(contractsData)
+        
           if (client) {
             setFormData({
               name: client.name,
-              phone: client.phone,
+              owner_phone: client.owner_phone,
+              manager_phone: client.manager_phone,
               client_type: client.client_type,
+            contract_id: client.contract_id?.toString() || "",
               new_client_type: "",
             })
             setIsNewType(!types.includes(client.client_type))
-          }
-        })
-        .catch(error => {
-          toast({
-            title: "Ошибка",
-            description: "Не удалось загрузить типы клиентов",
-            variant: "destructive",
+        } else {
+          // Сбрасываем форму для создания нового клиента
+          setFormData({
+            name: "",
+            owner_phone: "",
+            manager_phone: "",
+            client_type: "",
+            contract_id: "",
+            new_client_type: "",
           })
+          setIsNewType(false)
+        }
         })
     }
-  }, [open, client, toast])
+  }, [open, client])
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const { name, value } = e.target
+    setFormData(prev => ({ ...prev, [name]: value }))
+  }
+
+  const handleSelectChange = (name: string, value: string) => {
+    if (!value) return
     setFormData(prev => ({ ...prev, [name]: value }))
   }
 
@@ -81,8 +102,11 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
       if (!formData.name.trim()) {
         throw new Error("Имя клиента обязательно")
       }
-      if (!formData.phone.trim()) {
-        throw new Error("Телефон клиента обязателен")
+      if (!formData.owner_phone.trim()) {
+        throw new Error("Телефон владельца обязателен")
+      }
+      if (!formData.manager_phone.trim()) {
+        throw new Error("Телефон менеджера обязателен")
       }
       if (!isNewType && !formData.client_type) {
         throw new Error("Тип клиента обязателен")
@@ -90,11 +114,17 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
       if (isNewType && !formData.new_client_type.trim()) {
         throw new Error("Новый тип клиента обязателен")
       }
+      if (!formData.contract_id) {
+        throw new Error("Договор обязателен")
+      }
 
       const clientData = {
         name: formData.name,
-        phone: formData.phone,
+        owner_phone: formData.owner_phone,
+        manager_phone: formData.manager_phone,
         client_type: isNewType ? formData.new_client_type : formData.client_type,
+        contract_id: parseInt(formData.contract_id),
+        car_numbers: formData.car_numbers.split(',').map(num => num.trim()).filter(num => num.length > 0)
       }
 
       if (client) {
@@ -126,83 +156,132 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-md" aria-describedby="client-form-description">
         <DialogHeader>
-          <DialogTitle>{client ? "Редактировать клиента" : "Добавить клиента"}</DialogTitle>
+          <DialogTitle>{client ? "Редактирование клиента" : "Создание нового клиента"}</DialogTitle>
+          <DialogDescription id="client-form-description">
+            {client ? "Измените данные клиента" : "Заполните форму для создания нового клиента"}
+          </DialogDescription>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="name">Имя клиента</Label>
-            <Input
-              id="name"
-              name="name"
-              value={formData.name}
-              onChange={handleChange}
-              placeholder="Введите имя клиента"
-              required
-            />
-          </div>
+        
+    <form onSubmit={handleSubmit} className="space-y-4">
+      <div className="space-y-2">
+        <Label htmlFor="name">Имя клиента</Label>
+        <Input
+          id="name"
+          name="name"
+          value={formData.name}
+          onChange={handleChange}
+          placeholder="Введите имя клиента"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="owner_phone">Телефон владельца</Label>
+        <Input
+          id="owner_phone"
+          name="owner_phone"
+          value={formData.owner_phone}
+          onChange={handleChange}
+          placeholder="Введите телефон владельца"
+          required
+        />
+      </div>
+
+      <div className="space-y-2">
+        <Label htmlFor="manager_phone">Телефон менеджера</Label>
+        <Input
+          id="manager_phone"
+          name="manager_phone"
+          value={formData.manager_phone}
+          onChange={handleChange}
+          placeholder="Введите телефон менеджера"
+          required
+        />
+      </div>
 
           <div className="space-y-2">
-            <Label htmlFor="phone">Телефон</Label>
-            <Input
-              id="phone"
-              name="phone"
-              value={formData.phone}
-              onChange={handleChange}
-              placeholder="Введите телефон"
-              required
-            />
-          </div>
-
-          <div className="space-y-2">
-            <Label>Тип клиента</Label>
+            <Label htmlFor="contract_id">Договор</Label>
             <Select
-              value={isNewType ? "new" : formData.client_type}
-              onValueChange={handleTypeChange}
+              value={formData.contract_id}
+              onValueChange={(value) => handleSelectChange("contract_id", value)}
             >
               <SelectTrigger>
-                <SelectValue placeholder="Выберите тип клиента" />
+                <SelectValue placeholder="Выберите договор" />
               </SelectTrigger>
               <SelectContent>
-                {clientTypes.map(type => (
-                  <SelectItem key={type} value={type}>
-                    {type}
+                {contracts.map((contract) => (
+                  <SelectItem key={contract.id} value={contract.id.toString()}>
+                    {contract.number} ({contract.client_type})
                   </SelectItem>
                 ))}
-                <SelectItem value="new">+ Добавить новый тип</SelectItem>
               </SelectContent>
             </Select>
-          </div>
+      </div>
 
-          {isNewType && (
-            <div className="space-y-2">
-              <Label htmlFor="new_client_type">Новый тип клиента</Label>
-              <Input
-                id="new_client_type"
-                name="new_client_type"
-                value={formData.new_client_type}
-                onChange={handleChange}
-                placeholder="Введите новый тип клиента"
-                required
-              />
-            </div>
-          )}
+      <div className="space-y-2">
+        <Label>Тип клиента</Label>
+        <Select
+          value={isNewType ? "new" : formData.client_type}
+          onValueChange={handleTypeChange}
+        >
+          <SelectTrigger>
+            <SelectValue placeholder="Выберите тип клиента" />
+          </SelectTrigger>
+          <SelectContent>
+            {clientTypes.map(type => (
+              <SelectItem key={type} value={type}>
+                {type}
+              </SelectItem>
+            ))}
+            <SelectItem value="new">+ Добавить новый тип</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
 
-          <div className="flex justify-end space-x-2">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={() => onOpenChange(false)}
-              disabled={isSubmitting}
-            >
-              Отмена
-            </Button>
-            <Button type="submit" disabled={isSubmitting}>
-              {isSubmitting ? "Сохранение..." : client ? "Сохранить" : "Создать"}
-            </Button>
-          </div>
-        </form>
+      {isNewType && (
+        <div className="space-y-2">
+          <Label htmlFor="new_client_type">Новый тип клиента</Label>
+          <Input
+            id="new_client_type"
+            name="new_client_type"
+            value={formData.new_client_type}
+            onChange={handleChange}
+            placeholder="Введите новый тип клиента"
+            required
+          />
+        </div>
+      )}
+
+      <div className="space-y-2">
+        <Label htmlFor="car_numbers">Номера автомобилей</Label>
+        <Input
+          id="car_numbers"
+          name="car_numbers"
+          value={formData.car_numbers}
+          onChange={handleChange}
+          placeholder="Введите номера автомобилей через запятую"
+        />
+        <p className="text-sm text-muted-foreground">
+          Введите номера автомобилей через запятую (например: А123БВ77, В456ГД78)
+        </p>
+      </div>
+
+      <div className="flex justify-end space-x-2">
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => onOpenChange(false)}
+          disabled={isSubmitting}
+        >
+          Отмена
+        </Button>
+        <Button type="submit" disabled={isSubmitting}>
+          {isSubmitting ? "Сохранение..." : client ? "Сохранить" : "Создать"}
+        </Button>
+      </div>
+    </form>
       </DialogContent>
     </Dialog>
   )

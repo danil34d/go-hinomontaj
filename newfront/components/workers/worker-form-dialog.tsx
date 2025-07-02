@@ -23,6 +23,10 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
     name: "",
     surname: "",
     email: "",
+    phone: "",
+    salary_schema: "fixed",
+    tmp_salary: 0,
+    has_car: false,
     role: "worker",
     password: "",
   })
@@ -42,7 +46,7 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
     try {
       setSubmitting(true)
 
-      if (!formData.name || !formData.surname || !formData.email || !formData.password) {
+      if (!formData.name || !formData.surname || !formData.email || !formData.phone || !formData.password) {
         throw new Error("Необходимо заполнить все поля")
       }
 
@@ -74,10 +78,10 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md" aria-describedby="worker-form-description">
         <DialogHeader>
           <DialogTitle>Создание нового сотрудника</DialogTitle>
-          <DialogDescription>
+          <DialogDescription id="worker-form-description">
             Заполните форму для создания нового сотрудника
           </DialogDescription>
         </DialogHeader>
@@ -118,6 +122,61 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
               onChange={handleChange}
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="phone">Телефон</Label>
+            <Input
+              id="phone"
+              name="phone"
+              type="tel"
+              placeholder="Введите телефон"
+              value={formData.phone}
+              onChange={handleChange}
+              required
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="salary_schema">Схема оплаты</Label>
+            <Select
+              value={formData.salary_schema}
+              onValueChange={(value) => handleSelectChange("salary_schema", value)}
+              required
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите схему оплаты" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="fixed">Фиксированная</SelectItem>
+                <SelectItem value="percentage">Процентная</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="tmp_salary">Зарплата</Label>
+            <Input
+              id="tmp_salary"
+              name="tmp_salary"
+              type="number"
+              placeholder="Введите зарплату"
+              value={formData.tmp_salary}
+              onChange={handleChange}
+              required
+            />
+          </div>
+
+          <div className="flex items-center space-x-2">
+            <input
+              id="has_car"
+              name="has_car"
+              type="checkbox"
+              checked={formData.has_car}
+              onChange={(e) => setFormData(prev => ({ ...prev, has_car: e.target.checked }))}
+              className="rounded"
+            />
+            <Label htmlFor="has_car">Есть машина</Label>
           </div>
 
           <div className="space-y-2">

@@ -1,44 +1,54 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { Plus, Search, MoreHorizontal, Edit, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { MoreHorizontal, Plus, Search } from "lucide-react"
-import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu"
-import { useToast } from "@/components/ui/use-toast"
-import { servicesApi } from "@/lib/api"
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import { DashboardLayout } from "@/components/layout/dashboard-layout"
+import { Service, ServiceWithPrices, servicesApi } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
 import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import { ServiceEditDialog } from "@/components/services/service-edit-dialog"
-
-interface Service {
-  id: number
-  name: string
-  prices: Record<string, number>
-}
+import { ServicePriceEditDialog } from "@/components/services/service-price-edit-dialog"
 
 export default function ServicesPage() {
-  const [services, setServices] = useState<Service[]>([])
-  const [loading, setLoading] = useState(true)
-  const [searchQuery, setSearchQuery] = useState("")
+  const [services, setServices] = useState<ServiceWithPrices[]>([])
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
+  const [editingPriceService, setEditingPriceService] = useState<ServiceWithPrices | null>(null)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
   const fetchServices = async () => {
     try {
-      setLoading(true)
-      const data = await servicesApi.getAll()
-      setServices(data)
-    } catch (error) {
+      setIsLoading(true)
+      const data = await servicesApi.getAllWithPrices()
+      console.log("Полученные услуги с ценами:", data)
+      setServices(data || [])
+    } catch (error: any) {
+      console.error("Ошибка при загрузке услуг:", error)
       toast({
-        title: "Ошибка",
-        description: "Не удалось загрузить список услуг",
         variant: "destructive",
+        title: "Ошибка",
+        description: error.message || "Не удалось загрузить услуги",
       })
     } finally {
-      setLoading(false)
+      setIsLoading(false)
     }
   }
 
@@ -46,36 +56,78 @@ export default function ServicesPage() {
     fetchServices()
   }, [])
 
-  const handleDelete = async (id: number) => {
+  const handleDelete = async (service: ServiceWithPrices) => {
     if (!confirm("Вы уверены, что хотите удалить эту услугу?")) {
       return
     }
 
     try {
-      await servicesApi.delete(id)
       toast({
-        title: "Успех",
-        description: "Услуга успешно удалена",
+        title: "Информация",
+        description: "Удаление услуг с ценами по договорам пока не поддерживается",
       })
       fetchServices()
-    } catch (error) {
+    } catch (error: any) {
       toast({
-        title: "Ошибка",
-        description: "Не удалось удалить услугу",
         variant: "destructive",
+        title: "Ошибка",
+        description: error.message || "Не удалось удалить услугу",
       })
     }
   }
 
-  const filteredServices = services.filter(service =>
-    service.name.toLowerCase().includes(searchQuery.toLowerCase())
-  )
+  // Безопасная фильтрация с проверкой на undefined
+  const filteredServices = services.filter((service) => {
+    if (!service || !service.name) return false
+    return service.name.toLowerCase().includes(searchQuery.toLowerCase())
+  })
+
+  // Получаем уникальные договоры для заголовков таблицы
+  const getUniqueContracts = () => {
+    const contracts = new Map<number, string>()
+    services.forEach(service => {
+      if (service.prices) {
+        service.prices.forEach(price => {
+          if (price.contract_id && price.contract_name) {
+            contracts.set(price.contract_id, price.contract_name)
+          }
+        })
+      }
+    })
+    return Array.from(contracts.entries()).map(([id, name]) => ({ id, name }))
+  }
+
+  const uniqueContracts = getUniqueContracts()
+
+  // Получаем цену услуги для конкретного договора
+  const getServicePrice = (service: ServiceWithPrices, contractId: number) => {
+    if (!service.prices) return "-"
+    const price = service.prices.find(p => p.contract_id === contractId)
+    return price ? `${price.price} ₽` : "-"
+  }
+
+  if (isLoading) {
+    return (
+      <DashboardLayout>
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h1 className="text-2xl font-bold">Услуги</h1>
+            <Button disabled>
+              <Plus className="w-4 h-4 mr-2" />
+              Добавить услугу
+            </Button>
+          </div>
+          <div className="text-center py-8">Загрузка...</div>
+        </div>
+      </DashboardLayout>
+    )
+  }
 
   return (
     <DashboardLayout>
       <div className="space-y-4">
         <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Услуги</h1>
+          <h1 className="text-2xl font-bold">Услуги с ценами по договорам</h1>
           <Button onClick={() => setIsCreateDialogOpen(true)}>
             <Plus className="w-4 h-4 mr-2" />
             Добавить услугу
@@ -94,37 +146,41 @@ export default function ServicesPage() {
           </div>
         </div>
 
-        <div className="border rounded-lg">
+        <div className="border rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Название</TableHead>
-                {Object.keys(services[0]?.prices || {}).map(type => (
-                  <TableHead key={type}>Цена для {type}</TableHead>
+                <TableHead className="min-w-[200px]">Название услуги</TableHead>
+                {uniqueContracts.map((contract) => (
+                  <TableHead key={contract.id} className="min-w-[150px] text-center">
+                    Договор: {contract.name}
+                  </TableHead>
                 ))}
-                <TableHead className="w-[50px]"></TableHead>
+                <TableHead className="min-w-[150px]">Технологическая карта</TableHead>
+                <TableHead className="w-[100px]">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {loading ? (
+              {filteredServices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={Object.keys(services[0]?.prices || {}).length + 2} className="text-center">
-                    Загрузка...
-                  </TableCell>
-                </TableRow>
-              ) : filteredServices.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={Object.keys(services[0]?.prices || {}).length + 2} className="text-center">
+                  <TableCell colSpan={uniqueContracts.length + 3} className="text-center py-8">
                     Услуги не найдены
                   </TableCell>
                 </TableRow>
               ) : (
-                filteredServices.map((service) => (
-                  <TableRow key={service.id}>
-                    <TableCell>{service.name}</TableCell>
-                    {Object.entries(service.prices).map(([type, price]) => (
-                      <TableCell key={type}>{price} ₽</TableCell>
+                filteredServices.map((service, index) => (
+                  <TableRow key={`${service.name}-${index}`}>
+                    <TableCell className="font-medium">
+                      {service.name || "Без названия"}
+                    </TableCell>
+                    {uniqueContracts.map((contract) => (
+                      <TableCell key={contract.id} className="text-center">
+                        {getServicePrice(service, contract.id)}
+                      </TableCell>
                     ))}
+                    <TableCell>
+                      {service.material_card || "-"}
+                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>
@@ -133,13 +189,15 @@ export default function ServicesPage() {
                           </Button>
                         </DropdownMenuTrigger>
                         <DropdownMenuContent align="end">
-                          <DropdownMenuItem onClick={() => setEditingService(service)}>
-                            Редактировать
+                          <DropdownMenuItem onClick={() => setEditingPriceService(service)}>
+                            <Edit className="w-4 h-4 mr-2" />
+                            Редактировать цены
                           </DropdownMenuItem>
                           <DropdownMenuItem
                             className="text-red-600"
-                            onClick={() => handleDelete(service.id)}
+                            onClick={() => handleDelete(service)}
                           >
+                            <Trash2 className="w-4 h-4 mr-2" />
                             Удалить
                           </DropdownMenuItem>
                         </DropdownMenuContent>
@@ -164,6 +222,15 @@ export default function ServicesPage() {
           open={!!editingService}
           onOpenChange={(open) => !open && setEditingService(null)}
           service={editingService}
+          onSuccess={fetchServices}
+        />
+      )}
+      
+      {editingPriceService && (
+        <ServicePriceEditDialog
+          open={!!editingPriceService}
+          onOpenChange={(open) => !open && setEditingPriceService(null)}
+          service={editingPriceService}
           onSuccess={fetchServices}
         />
       )}

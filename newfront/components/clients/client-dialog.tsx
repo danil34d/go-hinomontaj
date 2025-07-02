@@ -5,10 +5,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { toast } from "sonner"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Upload, Download } from "lucide-react"
+import { ClientFormDialog } from "./client-form-dialog"
 
 interface ClientDialogProps {
   open: boolean
@@ -19,12 +19,7 @@ interface ClientDialogProps {
 
 export function ClientDialog({ open, onOpenChange, onSuccess, clientId }: ClientDialogProps) {
   const [isLoading, setIsLoading] = useState(false)
-  const [formData, setFormData] = useState({
-    name: "",
-    phone: "",
-    email: "",
-    client_type: "",
-  })
+  const [showClientForm, setShowClientForm] = useState(false)
   const [carData, setCarData] = useState({
     number: "",
     model: "",
@@ -144,13 +139,31 @@ export function ClientDialog({ open, onOpenChange, onSuccess, clientId }: Client
     }
   }
 
+  const handleClientFormSuccess = () => {
+    onSuccess?.()
+    onOpenChange(false)
+  }
+
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>{clientId ? "Добавить машину" : "Добавить клиента"}</DialogTitle>
-        </DialogHeader>
-        {clientId ? (
+    <>
+      <Dialog open={open && !clientId} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Добавить клиента</DialogTitle>
+          </DialogHeader>
+          <ClientFormDialog
+            open={open && !clientId}
+            onOpenChange={onOpenChange}
+            onSuccess={handleClientFormSuccess}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={open && !!clientId} onOpenChange={onOpenChange}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Добавить машину</DialogTitle>
+          </DialogHeader>
           <Tabs defaultValue="single" className="w-full">
             <TabsList className="grid w-full grid-cols-2">
               <TabsTrigger value="single">Одна машина</TabsTrigger>
@@ -200,69 +213,21 @@ export function ClientDialog({ open, onOpenChange, onSuccess, clientId }: Client
                     Скачать шаблон
                   </Button>
                 </div>
-                <div className="grid w-full max-w-sm items-center gap-1.5">
-                  <input
+                <div className="space-y-2">
+                  <Label htmlFor="file">Выберите Excel файл</Label>
+                  <Input
+                    id="file"
                     type="file"
-                    accept=".xlsx"
+                    accept=".xlsx,.xls"
                     onChange={handleFileUpload}
                     disabled={isLoading}
-                    className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background file:border-0 file:bg-transparent file:text-sm file:font-medium placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50"
                   />
                 </div>
               </div>
             </TabsContent>
           </Tabs>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Имя</Label>
-              <Input
-                id="name"
-                value={formData.name}
-                onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="phone">Телефон</Label>
-              <Input
-                id="phone"
-                value={formData.phone}
-                onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={formData.email}
-                onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="client_type">Тип клиента</Label>
-              <Select
-                value={formData.client_type}
-                onValueChange={(value) => setFormData({ ...formData, client_type: value })}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Выберите тип клиента" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="physical">Физическое лицо</SelectItem>
-                  <SelectItem value="legal">Юридическое лицо</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <Button type="submit" disabled={isLoading}>
-              {isLoading ? "Создание..." : "Создать"}
-            </Button>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 } 

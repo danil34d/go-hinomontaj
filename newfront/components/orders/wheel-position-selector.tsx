@@ -120,7 +120,7 @@ export function WheelPositionSelector({ value, onChange, truckType, onTruckTypeC
                       className="w-12 h-12 rounded-full"
                       title={`Левое внутреннее, ${index + 2}-я ось`}
                     >
-                      Л{index + 2}В
+                      Л{index + 2}ВН
                     </Button>
                     <Button
                       variant={value === `left_${index + 2}_outer` ? "default" : "outline"}
@@ -128,7 +128,7 @@ export function WheelPositionSelector({ value, onChange, truckType, onTruckTypeC
                       className="w-12 h-12 rounded-full"
                       title={`Левое внешнее, ${index + 2}-я ось`}
                     >
-                      Л{index + 2}Н
+                      Л{index + 2}ВШ
                     </Button>
                   </div>
                   <div className="flex gap-2">
@@ -138,7 +138,7 @@ export function WheelPositionSelector({ value, onChange, truckType, onTruckTypeC
                       className="w-12 h-12 rounded-full"
                       title={`Правое внутреннее, ${index + 2}-я ось`}
                     >
-                      П{index + 2}В
+                      П{index + 2}ВН
                     </Button>
                     <Button
                       variant={value === `right_${index + 2}_outer` ? "default" : "outline"}
@@ -146,7 +146,7 @@ export function WheelPositionSelector({ value, onChange, truckType, onTruckTypeC
                       className="w-12 h-12 rounded-full"
                       title={`Правое внешнее, ${index + 2}-я ось`}
                     >
-                      П{index + 2}Н
+                      П{index + 2}ВШ
                     </Button>
                   </div>
                 </div>
