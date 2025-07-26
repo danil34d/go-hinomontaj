@@ -7,6 +7,7 @@ import (
 	"go-hinomontaj/pkg/logger"
 	"net/http"
 	"strconv"
+	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
@@ -51,7 +52,12 @@ func (h *Handler) InitRoutes() *gin.Engine {
 		})
 	})
 
+	router.Static("/static", "./static")
+
 	api := router.Group("/api")
+	
+	// Роут для онлайн записи (без аутентификации)
+	api.POST("/date", h.Date)
 
 	auth := api.Group("/auth")
 	{
@@ -62,7 +68,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	api.Use(h.authMiddleware)
 
 	api.GET("/services", h.GetServices)
-	api.GET("/services/:id/prices", h.GetServicePricesByContract) 
+	api.GET("/services/:id/prices", h.GetServicePricesByContract)
 	api.GET("/client-types", h.clientTypes)
 	api.GET("/clients", h.GetClient)
 
@@ -71,7 +77,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	{
 		worker.GET("", h.GetMyOrders)
 		worker.POST("", h.CreateOrder)
-		worker.GET("/statistics", h.GetWorkerStatistics)
+		//worker.GET("/statistics", h.GetWorkerStatistics)
 	}
 
 	manager := api.Group("/manager")
@@ -84,7 +90,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			orders.PUT("/:id", h.UpdateOrder)
 			orders.DELETE("/:id", h.DeleteOrder)
 		}
-		manager.GET("/statistics", h.GetStatistics)
+		manager.GET("/statistics", h.GetOrderStatistics)
 
 		// Управление клиентами
 		clients := manager.Group("/clients")
@@ -97,6 +103,13 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			clients.POST("/:id/vehicles", h.CreateClientCar)
 			clients.POST("/:id/vehicles/upload", h.UploadClientCars)
 			clients.GET("/vehicles/template", h.GetCarsTemplate)
+
+			clients.GET("/whoose/:car", h.WhooseCar)
+			clients.GET("/compare/:car", h.CompareClientsForCar)
+
+			clients.GET("/onlinedate", h.GetOnlineDate) // получить все онлайн встречи
+			clients.POST("/onlinedate", h.CreateOnlineDate) // создать новую онлайн встречу
+			clients.PUT("/onlinedate", h.UpdateOnlineDate) // отредактировать встречу, например чтобы написать заметку
 		}
 
 		// Управление сотрудниками
@@ -107,6 +120,15 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			workers.GET("/:id", h.GetWorker)
 			workers.PUT("/:id", h.UpdateWorker)
 			workers.DELETE("/:id", h.DeleteWorker)
+
+			workers.POST("/penalties", h.AddPenalty)
+			workers.GET("/penalties/:id", h.GetPenalties)
+
+			workers.POST("bonuses", h.AddBonus)
+			workers.GET("bonuses/:id", h.GetBonuses)
+
+			workers.GET("statistics/:id", h.GetStatistics)
+
 		}
 		services := manager.Group("/services")
 		{
@@ -136,7 +158,6 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			materialCards.DELETE("/:id", h.DeleteMaterialCard)
 			materialCards.GET("/storage", h.GetStorage)
 			materialCards.POST("/delivery", h.AddDelivery)
-
 		}
 
 	}
@@ -260,6 +281,8 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
+
+
 	// Валидация обязательных полей
 	if input.ClientID == 0 {
 		logger.Warning("Не указан ID клиента")
@@ -289,12 +312,7 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 			c.JSON(http.StatusBadRequest, gin.H{"error": "не указан ID услуги"})
 			return
 		}
-		if service.Description == "" {
-			logger.Warning("Не указано описание услуги")
-			c.JSON(http.StatusBadRequest, gin.H{"error": "не указано описание услуги"})
-			return
-		}
-		if service.Price <= 0 {
+		if service.Price < 0 {
 			logger.Warning("Неверная цена услуги")
 			c.JSON(http.StatusBadRequest, gin.H{"error": "неверная цена услуги"})
 			return
@@ -378,15 +396,16 @@ func (h *Handler) DeleteOrder(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
 }
 
-func (h *Handler) GetStatistics(c *gin.Context) {
+func (h *Handler) GetOrderStatistics(c *gin.Context) {
 	logger.Debug("Получен запрос на получение статистики")
-	stats, err := h.services.Order.GetStatistics()
-	if err != nil {
-		logger.Error("Ошибка при получении статистики: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-	logger.Debug("Статистика успешно получена")
+	var stats models.Statistics
+	//stats, err := h.services.Order.GetStatistics()
+	//if err != nil {
+	//	logger.Error("Ошибка при получении статистики: %v", err)
+	//	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+	//	return
+	//}
+	//logger.Debug("Статистика успешно получена")
 	c.JSON(http.StatusOK, stats)
 }
 
@@ -448,7 +467,7 @@ func (h *Handler) CreateWorker(c *gin.Context) {
 		Email:        input.Email,
 		Phone:        input.Phone,
 		SalarySchema: input.SalarySchema,
-		TmpSalary:    input.TmpSalary,
+		Salary:       input.TmpSalary,
 		HasCar:       input.HasCar,
 	}
 
@@ -515,7 +534,6 @@ func (h *Handler) DeleteWorker(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
 }
 
-
 func (h *Handler) GetServices(c *gin.Context) {
 	logger.Debug("Получен запрос на получение списка услуг")
 	services, err := h.services.Service.GetAll()
@@ -540,7 +558,6 @@ func (h *Handler) GetServicesWithPrices(c *gin.Context) {
 	logger.Debug("Успешно получено %d услуг с ценами", len(services))
 	c.JSON(http.StatusOK, services)
 }
-
 
 func (h *Handler) GetServicePricesByContract(c *gin.Context) {
 	contractId, err := strconv.Atoi(c.Param("id"))
@@ -782,28 +799,28 @@ func (h *Handler) CreateClientCar(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Автомобиль успешно добавлен"})
 }
 
-func (h *Handler) GetWorkerStatistics(c *gin.Context) {
-	userId, _ := c.Get("userId")
-	logger.Debug("Получен запрос на получение статистики работника user_id:%v", userId)
-
-	// Получаем worker_id из user_id
-	worker, err := h.services.Worker.GetByUserId(userId.(int))
-	if err != nil {
-		logger.Error("Ошибка при получении данных работника: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
-		return
-	}
-
-	stats, err := h.services.Worker.GetStatistics(worker.ID)
-	if err != nil {
-		logger.Error("Ошибка при получении статистики работника: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-		return
-	}
-
-	logger.Debug("Успешно получена статистика для работника ID:%v", worker.ID)
-	c.JSON(http.StatusOK, stats)
-}
+//func (h *Handler) GetWorkerStatistics(c *gin.Context) {
+//	userId, _ := c.Get("userId")
+//	logger.Debug("Получен запрос на получение статистики работника user_id:%v", userId)
+//
+//	// Получаем worker_id из user_id
+//	worker, err := h.services.Worker.GetByUserId(userId.(int))
+//	if err != nil {
+//		logger.Error("Ошибка при получении данных работника: %v", err)
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
+//		return
+//	}
+//
+//	stats, err := h.services.Worker.GetStatistics(worker.ID)
+//	if err != nil {
+//		logger.Error("Ошибка при получении статистики работника: %v", err)
+//		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+//		return
+//	}
+//
+//	logger.Debug("Успешно получена статистика для работника ID:%v", worker.ID)
+//	c.JSON(http.StatusOK, stats)
+//}
 
 // UploadClientCars обрабатывает загрузку Excel файла с машинами клиента
 func (h *Handler) UploadClientCars(c *gin.Context) {
@@ -985,7 +1002,6 @@ func (h *Handler) DeleteContract(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
 }
 
-
 func (h *Handler) GetMaterialCards(c *gin.Context) {
 	logger.Debug("Получен запрос на получение списка материалов")
 	materialCards, err := h.services.MaterialCard.GetAll()
@@ -1077,7 +1093,6 @@ func (h *Handler) GetStorage(c *gin.Context) {
 	c.JSON(http.StatusOK, storage)
 }
 
-
 func (h *Handler) AddDelivery(c *gin.Context) {
 	var delivery models.Storage
 	logger.Debug("Получен запрос на добавление доставки")
@@ -1094,4 +1109,309 @@ func (h *Handler) AddDelivery(c *gin.Context) {
 	}
 	logger.Debug("Успешно добавлены материалы на склад")
 	c.JSON(http.StatusOK, delivery)
+}
+
+func (h *Handler) AddPenalty(context *gin.Context) {
+	var input struct {
+		WorkerID    int    `json:"worker_id"`
+		Amount      int    `json:"amount"`
+		Description string `json:"description"`
+	}
+	logger.Debug("Получен запрос на добавление штрафа")
+	if err := context.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при добавлении штрафа: %v", err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	// Получаем worker для проверки существования
+	worker, err := h.services.Worker.GetById(input.WorkerID)
+	if err != nil {
+		logger.Error("Ошибка при получении данных работника %d: %v", input.WorkerID, err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "работник не найден"})
+		return
+	}
+
+	// Конвертируем в модель PenaltyOrBonus
+	penalty := models.PenaltyOrBonus{
+		WorkerID: input.WorkerID,
+		Amount:   input.Amount,
+		Desc:     input.Description,
+	}
+
+	err = h.services.Worker.AddPenalty(penalty)
+	if err != nil {
+		logger.Error("Ошибка при добавлении штрафа: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Info("Успешно добавлен штраф работнику %s %s", worker.Name, worker.Surname)
+	context.JSON(http.StatusOK, penalty)
+}
+
+func (h *Handler) GetPenalties(context *gin.Context) {
+	var penalties []models.PenaltyOrBonus
+	logger.Debug("Получен запрос на получение списка штрафов")
+
+	id, err := strconv.Atoi(context.Param("id"))
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+	penalties, err = h.services.Worker.GetPenalties(id)
+	if err != nil {
+		logger.Error("Ошибка при получении списка штрафов: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно получено %d штрафов", len(penalties))
+	context.JSON(http.StatusOK, penalties)
+}
+
+func (h *Handler) AddBonus(context *gin.Context) {
+	var input struct {
+		WorkerID    int    `json:"worker_id"`
+		Amount      int    `json:"amount"`
+		Description string `json:"description"`
+	}
+	logger.Debug("Получен запрос на добавление бонуса")
+	if err := context.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при добавлении бонуса: %v", err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	// Получаем worker для проверки существования
+	worker, err := h.services.Worker.GetById(input.WorkerID)
+	if err != nil {
+		logger.Error("Ошибка при получении данных работника %d: %v", input.WorkerID, err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "работник не найден"})
+		return
+	}
+
+	// Конвертируем в модель PenaltyOrBonus
+	bonus := models.PenaltyOrBonus{
+		WorkerID: input.WorkerID,
+		Amount:   input.Amount,
+		Desc:     input.Description,
+	}
+
+	err = h.services.Worker.AddBonus(bonus)
+	if err != nil {
+		logger.Error("Ошибка при добавлении бонуса: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Info("Успешно добавлен бонус работнику %s %s", worker.Name, worker.Surname)
+	context.JSON(http.StatusOK, bonus)
+}
+
+func (h *Handler) GetBonuses(context *gin.Context) {
+	id, err := strconv.Atoi(context.Param("id"))
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	logger.Debug("Получен запрос на получение списка бонусов")
+	bonuses, err := h.services.Worker.GetBonuses(id)
+	if err != nil {
+		logger.Error("Ошибка при получении списка бонусов: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно получено %d бонусов", len(bonuses))
+	context.JSON(http.StatusOK, bonuses)
+}
+
+func (h *Handler) GetStatistics(context *gin.Context) {
+	id, err := strconv.Atoi(context.Param("id"))
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	startStr := context.Query("start")
+	endStr := context.Query("end")
+
+	const layout = "2006-01-02" // формат даты: YYYY-MM-DD (например: 2025-07-16)
+
+	start, err := time.Parse(layout, startStr)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат start, ожидается YYYY-MM-DD"})
+		return
+	}
+
+	end, err := time.Parse(layout, endStr)
+	if err != nil {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат end, ожидается YYYY-MM-DD"})
+		return
+	}
+
+	logger.Debug("Получен запрос на получение статистики")
+	statistics, err := h.services.Worker.GetStatistics(id, start, end)
+	if err != nil {
+		logger.Error("Ошибка при получении статистики: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	context.JSON(http.StatusOK, statistics)
+}
+
+
+func (h *Handler) UpdateOnlineDate(context *gin.Context) {
+	var onlineDate models.OnlineDate
+	logger.Debug("Получен запрос на получение даты")
+	if err := context.BindJSON(&onlineDate); err != nil {
+		logger.Warning("Ошибка привязки JSON при получении даты: %v", err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+	err := h.services.Client.UpdateOnlineDate(onlineDate)
+	if err != nil {
+		logger.Error("Ошибка при получении даты: %v", err)
+	}
+	context.JSON(http.StatusOK, onlineDate)
+}
+
+func (h *Handler) Date(context *gin.Context) {
+	var input struct {
+		Name       string `json:"name"`
+		Phone      string `json:"phone"`
+		CarNumber  string `json:"car_number"`
+		ClientDesc string `json:"client_desc"`
+		Date       string `json:"date"`
+	}
+	
+	logger.Debug("Получен запрос на создание онлайн записи")
+	if err := context.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при создании записи: %v", err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+	
+	// Парсим дату из HTML datetime-local формата
+	parsedDate, err := time.Parse("2006-01-02T15:04", input.Date)
+	if err != nil {
+		logger.Warning("Ошибка парсинга даты %s: %v", input.Date, err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат даты"})
+		return
+	}
+	
+	onlineDate := models.OnlineDate{
+		Date:       parsedDate,
+		Name:       input.Name,
+		Phone:      input.Phone,
+		CarNumber:  input.CarNumber,
+		ClientDesc: input.ClientDesc,
+	}
+	
+	err = h.services.Client.OnlineDate(&onlineDate)
+	if err != nil {
+		logger.Error("Ошибка при создании онлайн записи: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка сохранения записи"})
+		return
+	}
+	
+	logger.Info("Создана онлайн запись: %s (%s) на %s для машины %s", 
+		onlineDate.Name, onlineDate.Phone, onlineDate.Date.Format("2006-01-02 15:04"), onlineDate.CarNumber)
+	context.JSON(http.StatusOK, gin.H{"message": "запись успешно создана", "id": onlineDate.ID})
+}
+
+func (h *Handler) GetOnlineDate(context *gin.Context) {
+	logger.Debug("Получен запрос на получение списка онлайн встреч")
+	dates, err := h.services.Client.GetOnlineDate()
+	if err != nil {
+		logger.Error("Ошибка при получении списка онлайн встреч: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Успешно получено %d онлайн встреч", len(dates))
+	context.JSON(http.StatusOK, dates)
+}
+
+func (h *Handler) CreateOnlineDate(context *gin.Context) {
+	var onlineDate models.OnlineDate
+	logger.Debug("Получен запрос на создание онлайн встречи")
+	if err := context.BindJSON(&onlineDate); err != nil {
+		logger.Warning("Ошибка привязки JSON при создании онлайн встречи: %v", err)
+		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+	
+	if onlineDate.Name == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "не указано имя клиента"})
+		return
+	}
+	if onlineDate.Phone == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "не указан телефон"})
+		return
+	}
+	if onlineDate.CarNumber == "" {
+		context.JSON(http.StatusBadRequest, gin.H{"error": "не указан номер автомобиля"})
+		return
+	}
+	
+	err := h.services.Client.OnlineDate(&onlineDate)
+	if err != nil {
+		logger.Error("Ошибка при создании онлайн встречи: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Info("Успешно создана онлайн встреча для клиента: %s", onlineDate.Name)
+	context.JSON(http.StatusCreated, onlineDate)
+}
+
+func (h *Handler) WhooseCar(context *gin.Context) {
+	car := context.Param("car")
+	whooseCar, err := h.services.Client.WhooseCar(car)
+	if err != nil {
+		logger.Error("Ошибка при получении данных о машине: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	context.JSON(http.StatusOK, whooseCar)
+}
+
+func (h *Handler) CompareClientsForCar(context *gin.Context) {
+	car := context.Param("car")
+	
+	// Получаем клиентов машины
+	clients, err := h.services.Client.WhooseCar(car)
+	if err != nil {
+		logger.Error("Ошибка при получении данных о машине: %v", err)
+		context.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	if len(clients) == 0 {
+		context.JSON(http.StatusNotFound, gin.H{"error": "машина не найдена"})
+		return
+	}
+
+	// Для каждого клиента получаем цены услуг
+	type ClientComparison struct {
+		Client   models.Client    `json:"client"`
+		Services []models.Service `json:"services"`
+	}
+
+	var comparisons []ClientComparison
+
+	for _, client := range clients {
+		services, err := h.services.Service.GetServicePricesByContract(client.ContractID)
+		if err != nil {
+			logger.Error("Ошибка при получении услуг для договора %d: %v", client.ContractID, err)
+			// Продолжаем с пустым массивом услуг
+			services = []models.Service{}
+		}
+
+		comparisons = append(comparisons, ClientComparison{
+			Client:   client,
+			Services: services,
+		})
+	}
+
+	logger.Info("Сравнение клиентов для машины %s: найдено %d клиентов", car, len(comparisons))
+	context.JSON(http.StatusOK, comparisons)
 }

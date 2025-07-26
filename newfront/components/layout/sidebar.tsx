@@ -4,7 +4,7 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/context/auth-context"
-import { BarChart3, ClipboardList, Home, LogOut, Users, Package, UserCircle, FileText, UserCheck, Wrench, FileSignature, Settings, Car, UserPlus, Activity } from "lucide-react"
+import { BarChart3, ClipboardList, Home, LogOut, Users, Package, UserCircle, FileText, UserCheck, Wrench, FileSignature, Settings, Car, UserPlus, Activity, Calendar } from "lucide-react"
 import { Button } from "@/components/ui/button"
 
 export function Sidebar() {
@@ -22,7 +22,8 @@ export function Sidebar() {
           { href: "/dashboard/manager/clients", label: "Клиенты", icon: UserCircle },
           { href: "/dashboard/manager/contracts", label: "Договоры", icon: FileSignature },
           { href: "/dashboard/manager/materials", label: "Материалы", icon: Package },
-          { href: "/dashboard/manager/statistics", label: "Статистика", icon: BarChart3 },
+          { href: "/dashboard/manager/online-dates", label: "Онлайн встречи", icon: Calendar },
+          { href: "/dashboard/manager/economics", label: "Экономика", icon: BarChart3 },
         ]
       : [
           { href: "/dashboard/worker", label: "Главная", icon: Home },

@@ -59,7 +59,8 @@ export const ordersApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось загрузить заказы")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Получить заказы работника
@@ -68,7 +69,8 @@ export const ordersApi = {
     if (!response.ok) {
       throw new Error("Не удалось загрузить заказы")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Создать заказ (для работника)
@@ -186,7 +188,8 @@ export const workersApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось загрузить список сотрудников")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Получить сотрудника по ID
@@ -263,7 +266,8 @@ export const servicesApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить список услуг")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Получить услуги с ценами по договорам
@@ -273,7 +277,8 @@ export const servicesApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить услуги с ценами")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Получить услуги с ценами по договору
@@ -283,7 +288,8 @@ export const servicesApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить услуги с ценами")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   getWorkerServices: async () => {
@@ -346,7 +352,8 @@ export const clientsApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить клиентов")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Получить всех клиентов (для работника)
@@ -440,6 +447,32 @@ export const clientsApi = {
     }
     return response.json()
   },
+
+  // Получить владельцев машины
+  whooseCar: async (carNumber: string): Promise<Client[]> => {
+    const response = await fetchWithAuth(`/api/manager/clients/whoose/${carNumber}`)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить владельцев машины")
+    }
+
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
+
+  // Получить сравнение клиентов для машины
+  compareClientsForCar: async (carNumber: string): Promise<ClientComparison[]> => {
+    const response = await fetchWithAuth(`/api/manager/clients/compare/${carNumber}`)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить сравнение клиентов")
+    }
+
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
 }
 
 // API для работы с договорами (для менеджера)
@@ -450,7 +483,8 @@ export const contractsApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить список договоров")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   getById: async (id: number): Promise<Contract> => {
@@ -535,7 +569,8 @@ export const materialsApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось получить список технологических карт")
     }
-    return response.json()
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
   },
 
   // Создать технологическую карту
@@ -642,6 +677,12 @@ export interface Service {
   updated_at: string
 }
 
+// Интерфейс для сравнения клиентов
+export interface ClientComparison {
+  client: Client
+  services: Service[]
+}
+
 export interface ServiceWithPrices {
   name: string
   material_card: number
@@ -737,4 +778,151 @@ export interface OrderService {
   price: number
   created_at: string
   updated_at: string
+}
+
+export interface OnlineDate {
+  id: number
+  date: string
+  name: string
+  phone: string
+  car_number: string
+  client_desc: string
+  manager_desc: string
+  created_at: string
+  updated_at: string
+}
+
+// API для работы с онлайн встречами
+export const onlineDatesApi = {
+  // Получить все онлайн встречи
+  getAll: async (): Promise<OnlineDate[]> => {
+    const response = await fetchWithAuth("/api/manager/clients/onlinedate")
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось загрузить онлайн встречи")
+    }
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
+
+  // Создать новую онлайн встречу
+  create: async (data: Omit<OnlineDate, "id" | "created_at" | "updated_at">): Promise<OnlineDate> => {
+    const response = await fetchWithAuth("/api/manager/clients/onlinedate", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось создать онлайн встречу")
+    }
+
+    return response.json()
+  },
+
+  // Обновить онлайн встречу (добавить заметку менеджера)
+  update: async (data: Partial<OnlineDate>): Promise<OnlineDate> => {
+    const response = await fetchWithAuth("/api/manager/clients/onlinedate", {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось обновить онлайн встречу")
+    }
+
+    return response.json()
+  },
+}
+
+// API для работы с премиями и штрафами
+export const salaryApi = {
+  // Добавить премию сотруднику
+  addBonus: async (data: { worker_id: number; amount: number; description: string }) => {
+    const response = await fetchWithAuth("/api/manager/workers/bonuses", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        worker_id: data.worker_id,
+        amount: data.amount,
+        description: data.description,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось добавить премию")
+    }
+
+    return response.json()
+  },
+
+  // Добавить штраф сотруднику
+  addPenalty: async (data: { worker_id: number; amount: number; description: string }) => {
+    const response = await fetchWithAuth("/api/manager/workers/penalties", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        worker_id: data.worker_id,
+        amount: data.amount,
+        description: data.description,
+      }),
+    })
+
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось добавить штраф")
+    }
+
+    return response.json()
+  },
+
+  // Получить статистику сотрудника за период
+  getWorkerStatistics: async (workerId: number, startDate: string, endDate: string) => {
+    const response = await fetchWithAuth(`/api/manager/workers/statistics/${workerId}?start=${startDate}&end=${endDate}`)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить статистику")
+    }
+
+    return response.json()
+  },
+
+  // Получить премии сотрудника
+  getBonuses: async (workerId: number) => {
+    const response = await fetchWithAuth(`/api/manager/workers/bonuses/${workerId}`)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить премии")
+    }
+
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
+
+  // Получить штрафы сотрудника
+  getPenalties: async (workerId: number) => {
+    const response = await fetchWithAuth(`/api/manager/workers/penalties/${workerId}`)
+    
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить штрафы")
+    }
+
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
 }

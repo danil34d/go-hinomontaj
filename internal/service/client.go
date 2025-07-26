@@ -63,3 +63,17 @@ func (s *ClientService) GetCarsTemplate() (*bytes.Buffer, error) {
 	carService := NewCarService(s.repo)
 	return carService.GenerateTemplate()
 }
+
+func (s *ClientService) WhooseCar(car string) ([]models.Client, error) {
+	return s.repo.WhooseCar(car)
+}
+
+func (s *ClientService) OnlineDate(date *models.OnlineDate) error {
+	return s.repo.OnlineDate(date)
+}
+func (s *ClientService) GetOnlineDate() ([]models.OnlineDate, error) {
+	return s.repo.GetOnlineDate()
+}
+func (s *ClientService) UpdateOnlineDate(date models.OnlineDate) error {
+	return s.repo.UpdateOnlineDate(date)
+}

@@ -1,37 +1,30 @@
 "use client"
 
-import { useState, useEffect, ChangeEvent, FormEvent } from "react"
+import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
-import { useToast } from "@/components/ui/use-toast"
-import { ordersApi, clientsApi, servicesApi } from "@/lib/api"
-import { fetchWithAuth } from "@/lib/api"
+import { useToast } from "@/hooks/use-toast"
+import { ordersApi, clientsApi, servicesApi, workersApi } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
-import { X } from "lucide-react"
-import { useAuth } from "@/context/auth-context"
-import { WheelPositionSelector, WheelPosition } from "./wheel-position-selector"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Separator } from "@/components/ui/separator"
 
-interface Vehicle {
-  id: number
-  number: string
-  model: string
-  year: string
+interface WorkerOrderFormDialogProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onOrderCreated: () => void
 }
 
 interface Client {
   id: number
   name: string
   client_type: string
-  owner_phone: string
-  manager_phone: string
-  contract_id: number
-  car_numbers: string[]
-  created_at: string
-  updated_at: string
+  car_numbers?: string[]
+  company_name?: string
+  inn?: string
 }
 
 interface Service {
@@ -39,738 +32,664 @@ interface Service {
   name: string
   price: number
   contract_id: number
-  material_card: number
-  created_at: string
-  updated_at: string
 }
 
-interface WorkerOrderFormDialogProps {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  order?: any
-  onSuccess: () => void
+interface Car {
+  id: number
+  number: string
+  model?: string
+  year?: number
 }
 
-interface FormData {
-  client_id: string
-  vehicle_number: string
-  payment_method: string
-  description: string
-  service_ids: string[]
+interface Worker {
+  id: number
+  name: string
+  surname: string
 }
 
-export function WorkerOrderFormDialog({ open, onOpenChange, order, onSuccess }: WorkerOrderFormDialogProps) {
-  const [clients, setClients] = useState<Client[]>([])
-  const [services, setServices] = useState<Service[]>([])
-  const [clientVehicles, setClientVehicles] = useState<Vehicle[]>([])
-  const [loading, setLoading] = useState(true)
-  const [submitting, setSubmitting] = useState(false)
-  const [loadingVehicles, setLoadingVehicles] = useState(false)
+interface ContractComparison {
+  client: Client
+  services: Service[]
+  total: number
+}
+
+const CLIENT_TYPES = [
+  { value: "НАЛИЧКА", label: "Наличка" },
+  { value: "КОНТРАГЕНТЫ", label: "Контрагенты" },
+  { value: "АГРЕГАТОРЫ", label: "Агрегаторы" }
+]
+
+const PAYMENT_METHODS = [
+  { value: "cash", label: "Наличные" },
+  { value: "transfer", label: "Перевод" },
+  { value: "card", label: "Карта" }
+]
+
+export function WorkerOrderFormDialog({ open, onOpenChange, onOrderCreated }: WorkerOrderFormDialogProps) {
   const { toast } = useToast()
-  const { user } = useAuth()
-
-  const [formData, setFormData] = useState<FormData>({
-    client_id: "",
-    vehicle_number: "",
-    payment_method: "НАЛИЧНЫЕ",
-    description: "",
-    service_ids: [],
-  })
-
-  const [totalAmount, setTotalAmount] = useState(0)
-  const [selectedClientType, setSelectedClientType] = useState("")
+  
+  // Состояние формы
+  const [step, setStep] = useState(1)
+  const [clientType, setClientType] = useState("")
+  const [paymentMethod, setPaymentMethod] = useState("")
+  const [carNumber, setCarNumber] = useState("")
   const [selectedClient, setSelectedClient] = useState<Client | null>(null)
-  const [selectedTruckType, setSelectedTruckType] = useState<"type1" | "type2" | null>(null)
-  const [selectedWheelPosition, setSelectedWheelPosition] = useState<string>("")
+  const [selectedCar, setSelectedCar] = useState<Car | null>(null)
+  const [workerId, setWorkerId] = useState("")
+  const [wheelPosition, setWheelPosition] = useState("")
+  const [selectedServices, setSelectedServices] = useState<{[key: string]: number}>({})
+  const [comment, setComment] = useState("")
+  
+  // Данные из API
+  const [clients, setClients] = useState<Client[]>([])
+  const [cars, setCars] = useState<Car[]>([])
+  const [services, setServices] = useState<Service[]>([])
+  const [workers, setWorkers] = useState<Worker[]>([])
+  const [whooseCarClients, setWhooseCarClients] = useState<Client[]>([])
+  const [contractComparisons, setContractComparisons] = useState<ContractComparison[]>([])
+  
+  // Состояния загрузки
+  const [loading, setLoading] = useState(false)
+  const [showContractComparison, setShowContractComparison] = useState(false)
 
-  // Получаем уникальные типы клиентов
-  const clientTypes = Array.from(new Set(clients.map(client => client.client_type)))
-
-  // Фильтруем клиентов по выбранному типу
-  const filteredClients = clients.filter(client => client.client_type === selectedClientType)
-
-  // Получаем клиента "Наличка" для наличных платежей
-  const cashClient = clients.find(client => client.name === "Наличка" && client.client_type === "НАЛИЧКА")
-
-  // Если выбран контрагент или агрегатор и метод оплаты наличными или картой, меняем на безналичный
-  useEffect(() => {
-    if ((selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ") && 
-        (formData.payment_method === "НАЛИЧНЫЕ" || formData.payment_method === "КАРТА")) {
-      setFormData(prev => ({ ...prev, payment_method: "ПЕРЕВОД" }))
-    }
-  }, [selectedClientType])
-
-  // Автоматически устанавливаем клиента "Наличка" при выборе наличной оплаты
-  useEffect(() => {
-    if (formData.payment_method === "НАЛИЧНЫЕ" && cashClient) {
-      setFormData(prev => ({ 
-        ...prev, 
-        client_id: cashClient.id.toString() 
-      }))
-      setSelectedClientType("НАЛИЧКА")
-      // Загружаем услуги с ценами для налички (договор ID 1)
-      loadServicesByContract(1)
-    }
-  }, [formData.payment_method, cashClient])
-
-  // Проверяем, нужно ли показывать поля выбора клиента
-  const shouldShowClientSelection = formData.payment_method !== "НАЛИЧНЫЕ"
-
-  // Проверяем, нужно ли показывать выбор машины из списка
-  const shouldShowVehicleSelection = selectedClientType === "КОНТРАГЕНТЫ" || selectedClientType === "АГРЕГАТОРЫ"
-
-  // Обработчик выбора клиента
-  const handleClientSelect = (clientId: string) => {
-    const client = clients.find(c => c.id === parseInt(clientId))
-    if (client) {
-      setSelectedClient(client)
-      loadServicesByContract(client.contract_id)
-      
-      // Загружаем машины клиента, если это не наличка
-      if (client.client_type !== "НАЛИЧКА") {
-        fetchClientVehicles(client.id)
-      } else {
-        setClientVehicles([])
-      }
-    }
-  }
-
-  // Функция для загрузки машин клиента
-  const fetchClientVehicles = async (clientId: number) => {
-    try {
-      setLoadingVehicles(true)
-      const vehicles = await clientsApi.getVehicles(clientId)
-      setClientVehicles(vehicles)
-    } catch (error: any) {
-      console.error("Ошибка при загрузке машин клиента:", error)
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось загрузить машины клиента",
-      })
-    } finally {
-      setLoadingVehicles(false)
-    }
-  }
-
+  // Загрузка работников при открытии диалога
   useEffect(() => {
     if (open) {
-      fetchData()
-      if (order) {
-        setFormData({
-          client_id: order.client_id.toString(),
-          vehicle_number: order.vehicle_number,
-          payment_method: order.payment_method,
-          description: order.description,
-          service_ids: order.services?.map(service => service.id.toString()) || [],
-        })
-      } else {
-        setFormData({
-          client_id: "",
-          vehicle_number: "",
-          payment_method: "НАЛИЧНЫЕ",
-          description: "",
-          service_ids: [],
-        })
-      }
+      loadWorkers()
     }
-  }, [open, order])
+  }, [open])
 
+  // Загрузка клиентов при выборе типа клиента
   useEffect(() => {
-    // Обновляем тип клиента при выборе клиента
-    if (formData.client_id) {
-      const selectedClient = clients.find((c: Client) => c.id?.toString() === formData.client_id)
-      if (selectedClient) {
-        setSelectedClientType(selectedClient.client_type || "")
-        
-        // Загружаем машины клиента, если это контрагент или агрегатор
-        if (selectedClient.client_type === "КОНТРАГЕНТЫ" || selectedClient.client_type === "АГРЕГАТОРЫ") {
-          fetchClientVehicles(selectedClient.id)
-        } else {
-          setClientVehicles([])
-        }
-        
-        // Загружаем услуги с ценами по договору клиента
-        if (selectedClient.contract_id) {
-          loadServicesByContract(selectedClient.contract_id)
-        }
-      }
-    } else {
-      setSelectedClientType("")
-      setClientVehicles([])
+    if (clientType && clientType !== "НАЛИЧКА") {
+      loadClients()
     }
-  }, [formData.client_id, clients])
+  }, [clientType])
 
-  // Сбрасываем выбранного клиента при изменении типа клиента
+  // Загрузка услуг при выборе клиента или для налички
   useEffect(() => {
-    setFormData(prev => ({ ...prev, client_id: "" }))
-  }, [selectedClientType])
+    if (clientType === "НАЛИЧКА") {
+      loadServices(1) // Договор ID=1 для налички
+    } else if (selectedClient) {
+      loadServices(selectedClient.id)
+    }
+  }, [clientType, selectedClient])
 
-  useEffect(() => {
-    // Пересчитываем общую сумму при изменении выбранных услуг
-    console.log("Пересчет общей суммы. Выбранные услуги:", formData.service_ids)
-    console.log("Доступные услуги:", services)
-    
-    const total = formData.service_ids.reduce((sum: number, serviceId: string) => {
-      const service = services.find((s: Service) => s.id.toString() === serviceId)
-      console.log("Поиск услуги по ID:", serviceId, "Найдена:", service)
-      
-      if (!service) {
-        console.warn(`Не найдена услуга с ID ${serviceId}`)
-        return sum
-      }
-      
-      try {
-        const wheelType = getWheelType(selectedWheelPosition || "all")
-        const price = getServicePrice(service, wheelType)
-        
-        if (typeof price !== 'number' || isNaN(price)) {
-          console.warn(`Некорректная цена для услуги ${serviceId}: ${price}`)
-          return sum
-        }
-        
-        console.log(`Добавляем цену услуги ${serviceId} (${service.name}) для типа колеса ${wheelType}: ${price}`)
-        return sum + price
-      } catch (error) {
-        console.warn(`Ошибка при расчете цены для услуги ${serviceId}:`, error)
-        return sum
-      }
-    }, 0)
-    
-    console.log("Итоговая сумма:", total)
-    setTotalAmount(total)
-  }, [formData.service_ids, services, selectedWheelPosition])
-
-  const fetchData = async () => {
+  const loadWorkers = async () => {
     try {
-      setLoading(true)
-      console.log("Загрузка данных для формы заказа...")
-      
-      const clientsData = await clientsApi.getAll()
-
-      console.log("Полученные клиенты:", clientsData)
-
-      // Проверяем, что данные являются массивами
-      if (!Array.isArray(clientsData)) {
-        throw new Error("Неверный формат данных")
-      }
-
-      setClients(clientsData)
-      
-      // Загружаем услуги с ценами для налички (договор ID 1)
-      await loadServicesByContract(1)
+      const data = await workersApi.getAll()
+      setWorkers(data)
     } catch (error) {
-      console.error("Ошибка при загрузке данных:", error)
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error.message,
+        description: "Не удалось загрузить список работников"
+      })
+    }
+  }
+
+  const loadClients = async () => {
+    try {
+      const data = await clientsApi.getByType(clientType)
+      setClients(data)
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось загрузить список клиентов"
+      })
+    }
+  }
+
+  const loadServices = async (contractId: number) => {
+    try {
+      const data = await servicesApi.getServicesByContract(contractId)
+      setServices(data)
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось загрузить список услуг"
+      })
+    }
+  }
+
+  const handleCarNumberSubmit = async () => {
+    if (!carNumber.trim()) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Введите номер машины"
+      })
+      return
+    }
+
+    setLoading(true)
+    try {
+      const owners = await clientsApi.whooseCar(carNumber)
+      setWhooseCarClients(owners)
+      
+      if (owners.length === 0) {
+        toast({
+          variant: "destructive",
+          title: "Машина не найдена",
+          description: "Машина с таким номером не найдена в системе"
+        })
+      } else if (owners.length === 1) {
+        // Только один владелец - автоматически выбираем его
+        setSelectedClient(owners[0])
+        setStep(4)
+      } else if (clientType === "АГРЕГАТОРЫ") {
+        // Несколько агрегаторов - показываем сравнение договоров
+        await loadContractComparisons(owners)
+        setShowContractComparison(true)
+      } else {
+        // Несколько контрагентов - позволяем выбрать из списка
+        setStep(4)
+      }
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось найти владельцев машины"
       })
     } finally {
       setLoading(false)
     }
   }
 
-  // Функция для загрузки услуг с ценами по договору
-  const loadServicesByContract = async (contractId: number) => {
+  const loadContractComparisons = async (clients: Client[]) => {
     try {
-      const servicesData = await servicesApi.getServicesByContract(contractId)
-      
-      console.log("Загружены услуги для договора", contractId, ":", servicesData)
-      setServices(servicesData)
-    } catch (error: any) {
-      console.error("Ошибка при загрузке услуг для договора", contractId, ":", error)
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось загрузить услуги с ценами",
-      })
-    }
-  }
-
-  const handleChange = (e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
-    const { name, value } = e.target
-    // Преобразуем номер автомобиля в верхний регистр
-    if (name === "vehicle_number") {
-      setFormData((prev: FormData) => ({ ...prev, [name]: value.toUpperCase() }))
-    } else {
-    setFormData((prev: FormData) => ({ ...prev, [name]: value }))
-    }
-  }
-
-  const handleSelectChange = (name: string, value: string) => {
-    setFormData((prev: FormData) => ({ ...prev, [name]: value }))
-  }
-
-  const handleServiceSelect = (serviceId: string) => {
-    // Проверяем, что выбран клиент или используется наличная оплата
-    if (!selectedClientType && formData.payment_method !== "НАЛИЧНЫЕ") {
-      toast({
-        title: "Ошибка",
-        description: "Сначала выберите клиента",
-        variant: "destructive"
-      })
-      return
-    }
-
-    const service = services.find((s: Service) => s.id.toString() === serviceId)
-    if (!service) {
-      console.warn(`Не найдена услуга с ID ${serviceId}`)
-      return
-    }
-    
-    // Проверяем, что выбрана позиция колеса для услуг снятия/установки
-    if ((service.name.includes('Снятие колеса') || service.name.includes('Установка колеса')) && !selectedWheelPosition) {
-      toast({
-        title: "Ошибка",
-        description: "Для услуг снятия/установки колес необходимо выбрать позицию колеса",
-        variant: "destructive"
-      })
-      return
-    }
-    
-    try {
-      const wheelType = getWheelType(selectedWheelPosition || "all")
-      const price = getServicePrice(service, wheelType)
-      
-      if (typeof price !== 'number' || isNaN(price)) {
-        toast({
-          title: "Ошибка",
-          description: `Некорректная цена для услуги "${service.name}"`,
-          variant: "destructive"
+      const comparisons = await Promise.all(
+        clients.map(async (client) => {
+          const services = await servicesApi.getServicesByContract(client.id)
+          const total = services.reduce((sum, service) => sum + service.price, 0)
+          return { client, services, total }
         })
-        return
-      }
-      
-      if (!formData.service_ids.includes(serviceId)) {
-        setFormData((prev: FormData) => ({
-          ...prev,
-          service_ids: [...prev.service_ids, serviceId]
-        }))
-      }
+      )
+      setContractComparisons(comparisons)
     } catch (error) {
       toast({
+        variant: "destructive",
         title: "Ошибка",
-        description: error instanceof Error ? error.message : `Для услуги "${service.name}" нет доступных цен`,
-        variant: "destructive"
+        description: "Не удалось загрузить информацию о договорах"
       })
     }
   }
 
-  const handleRemoveService = (serviceId: string) => {
-    setFormData((prev: FormData) => ({
-      ...prev,
-      service_ids: prev.service_ids.filter((id: string) => id !== serviceId)
-    }))
+  const handleClientSelect = (client: Client) => {
+    setSelectedClient(client)
+    setShowContractComparison(false)
+    setStep(4)
   }
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
-
-    // Проверяем, что выбран клиент (кроме наличной оплаты, где клиент выбирается автоматически)
-    if (!formData.client_id && formData.payment_method !== "НАЛИЧНЫЕ") {
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Выберите клиента",
-      })
-      return
-    }
-
-    console.log("Начало создания заказа:", {
-      user: user,
-      worker_id: user?.worker_id,
-      role: user?.role
-    })
-
-    if (!user?.worker_id) {
-      console.error("Отсутствует worker_id в контексте пользователя")
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Не удалось определить ID работника. Попробуйте перезайти в систему.",
-      })
-      return
-    }
-
-    const clientId = parseInt(formData.client_id)
-    const serviceIds = formData.service_ids.map((id: string) => parseInt(id))
-
-    if (isNaN(clientId)) {
-      throw new Error("Некорректный ID клиента")
-    }
-    if (serviceIds.some(isNaN)) {
-      throw new Error("Некорректные ID услуг")
-    }
-
-    const orderData = {
-      worker_id: user.worker_id,
-      client_id: clientId,
-      vehicle_number: formData.vehicle_number,
-      payment_method: formData.payment_method,
-      description: formData.description,
-      truck_type: selectedTruckType,
-      services: serviceIds.map((serviceId: number) => {
-        const service = services.find((s: Service) => s.id === serviceId)
-        if (!service) {
-          throw new Error(`Не найдена услуга с ID ${serviceId}`)
-        }
-        
-        const wheelType = getWheelType(selectedWheelPosition || "all")
-        const price = getServicePrice(service, wheelType)
-        
-        if (typeof price !== 'number' || isNaN(price)) {
-          throw new Error(`Некорректная цена для услуги "${service.name}"`)
-        }
-        
-        return {
-          service_id: serviceId,
-          service_description: service.name,
-          wheel_position: selectedWheelPosition || "all",
-          price: price,
-        }
-      }),
-      total_amount: totalAmount,
-    }
-
-    console.log("Отправляемые данные заказа:", orderData)
-
-    try {
-      if (order) {
-        await ordersApi.update(order.id, orderData)
-        toast({
-          title: "Успешно",
-          description: "Заказ успешно обновлен",
-        })
+  const handleServiceToggle = (serviceId: string, price: number) => {
+    setSelectedServices(prev => {
+      const newServices = { ...prev }
+      if (newServices[serviceId]) {
+        delete newServices[serviceId]
       } else {
-        await ordersApi.create(orderData)
-        toast({
-          title: "Успешно",
-          description: "Заказ успешно создан",
-        })
+        newServices[serviceId] = price
       }
+      return newServices
+    })
+  }
 
-      onSuccess()
-      onOpenChange(false)
-    } catch (error: unknown) {
-      console.error("Ошибка при создании заказа:", error)
+  const calculateTotal = () => {
+    return Object.values(selectedServices).reduce((sum, price) => sum + price, 0)
+  }
+
+  const handleSubmit = async () => {
+    // Валидация
+    if (!clientType) {
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error instanceof Error ? error.message : "Произошла неизвестная ошибка",
+        description: "Выберите тип клиента"
       })
+      return
     }
-  }
 
-  // Функция для определения типа колеса (одиночное или спаренное)
-  const getWheelType = (position: string): 'single' | 'dual' => {
-    if (!position || position === "all") return 'single'
-    
-    // Проверяем, содержит ли позиция информацию о спаренном колесе
-    // Спаренное колесо имеет позиции с inner/outer
-    if (position.includes('inner') || position.includes('outer')) {
-      return 'dual'
+    if (clientType === "НАЛИЧКА" && !paymentMethod) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Выберите способ оплаты"
+      })
+      return
     }
-    
-    // Одиночное колесо - все остальные позиции
-    return 'single'
-  }
 
-  // Функция для получения цены услуги с учетом типа колеса
-  const getServicePrice = (service: Service, wheelType: 'single' | 'dual'): number => {
-    const prices = Object.values(service.prices)
-    if (prices.length === 0) {
-      throw new Error(`Для услуги "${service.name}" нет доступных цен`)
+    if ((clientType === "КОНТРАГЕНТЫ" || clientType === "АГРЕГАТОРЫ") && (!carNumber || !selectedClient)) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Введите номер машины и выберите клиента"
+      })
+      return
     }
-    
-    // Для услуг снятия и установки колес используем разные цены в зависимости от типа колеса
-    if (service.name.includes('Снятие колеса') || service.name.includes('Установка колеса')) {
-      if (wheelType === 'single' && service.name.includes('одиночка')) {
-        return prices.find(price => typeof price === 'number') || prices[0]
-      } else if (wheelType === 'dual' && service.name.includes('спарка')) {
-        return prices.find(price => typeof price === 'number') || prices[0]
+
+    if (!workerId) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Выберите работника"
+      })
+      return
+    }
+
+    if (!wheelPosition) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Выберите позицию колеса"
+      })
+      return
+    }
+
+    if (Object.keys(selectedServices).length === 0) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Выберите хотя бы одну услугу"
+      })
+      return
+    }
+
+    setLoading(true)
+    try {
+      const orderData = {
+        client_type: clientType,
+        client_id: clientType === "НАЛИЧКА" ? 1 : selectedClient?.id,
+        vehicle_number: carNumber || "",
+        payment_method: clientType === "НАЛИЧКА" ? paymentMethod : "contract",
+        worker_id: parseInt(workerId),
+        total_amount: calculateTotal(),
+        services: Object.entries(selectedServices).map(([serviceId, price]) => {
+          const service = services.find(s => s.id === parseInt(serviceId))
+          return {
+            service_id: parseInt(serviceId),
+            description: service?.name || "Услуга",
+            wheel_position: wheelPosition,
+            price: price
+          }
+        })
       }
+
+      await ordersApi.create(orderData)
+      
+      toast({
+        title: "Успех",
+        description: "Заказ успешно создан"
+      })
+      
+      onOrderCreated()
+      onOpenChange(false)
+      resetForm()
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        title: "Ошибка",
+        description: "Не удалось создать заказ"
+      })
+    } finally {
+      setLoading(false)
     }
-    
-    // Для остальных услуг используем первую доступную цену
-    return prices[0]
   }
 
-  const handlePaymentMethodChange = (value: string) => {
-    setFormData(prev => ({ ...prev, payment_method: value }))
-    
-    if (value === "НАЛИЧНЫЕ") {
-      const cashClient = clients.find(c => c.client_type === "НАЛИЧКА")
-      if (cashClient) {
-        setSelectedClient(cashClient)
-        setSelectedClientType(cashClient.client_type)
-        loadServicesByContract(cashClient.contract_id)
-        setClientVehicles([])
-      }
-    }
+  const resetForm = () => {
+    setStep(1)
+    setClientType("")
+    setPaymentMethod("")
+    setCarNumber("")
+    setSelectedClient(null)
+    setSelectedCar(null)
+    setWorkerId("")
+    setWheelPosition("")
+    setSelectedServices({})
+    setComment("")
+    setClients([])
+    setCars([])
+    setServices([])
+    setWhooseCarClients([])
+    setContractComparisons([])
+    setShowContractComparison(false)
   }
 
-  const handleInputChange = (name: string, value: string) => {
-    // Преобразуем номер автомобиля в верхний регистр
-    if (name === "vehicle_number") {
-      setFormData((prev: FormData) => ({ ...prev, [name]: value.toUpperCase() }))
-    } else {
-      setFormData((prev: FormData) => ({ ...prev, [name]: value }))
+  const renderStep = () => {
+    switch (step) {
+      case 1:
+        return (
+          <div className="space-y-4">
+            <Label>Тип клиента</Label>
+            <Select value={clientType} onValueChange={setClientType}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите тип клиента" />
+              </SelectTrigger>
+              <SelectContent>
+                {CLIENT_TYPES.map((type) => (
+                  <SelectItem key={type.value} value={type.value}>
+                    {type.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Button 
+              onClick={() => setStep(2)} 
+              disabled={!clientType}
+              className="w-full"
+            >
+              Далее
+            </Button>
+          </div>
+        )
+
+      case 2:
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Способ оплаты</Label>
+              <Badge variant="outline">{CLIENT_TYPES.find(t => t.value === clientType)?.label}</Badge>
+            </div>
+            
+            {clientType === "НАЛИЧКА" ? (
+              <Select value={paymentMethod} onValueChange={setPaymentMethod}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Выберите способ оплаты" />
+                </SelectTrigger>
+                <SelectContent>
+                  {PAYMENT_METHODS.map((method) => (
+                    <SelectItem key={method.value} value={method.value}>
+                      {method.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            ) : (
+              <div className="p-3 bg-muted rounded-md">
+                <p className="text-sm text-muted-foreground">Способ оплаты: По договору</p>
+              </div>
+            )}
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(1)} className="flex-1">
+                Назад
+              </Button>
+              <Button 
+                onClick={() => setStep(3)} 
+                disabled={clientType === "НАЛИЧКА" && !paymentMethod}
+                className="flex-1"
+              >
+                Далее
+              </Button>
+            </div>
+          </div>
+        )
+
+      case 3:
+        if (clientType === "НАЛИЧКА") {
+          setStep(4)
+          return null
+        }
+        
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Номер машины</Label>
+              <Badge variant="outline">{CLIENT_TYPES.find(t => t.value === clientType)?.label}</Badge>
+            </div>
+            
+            <Input
+              placeholder="Введите номер машины"
+              value={carNumber}
+              onChange={(e) => setCarNumber(e.target.value.toUpperCase())}
+            />
+            
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(2)} className="flex-1">
+                Назад
+              </Button>
+              <Button 
+                onClick={handleCarNumberSubmit} 
+                disabled={!carNumber.trim() || loading}
+                className="flex-1"
+              >
+                {loading ? "Поиск..." : "Найти владельцев"}
+              </Button>
+            </div>
+          </div>
+        )
+
+      case 4:
+        if (clientType !== "НАЛИЧКА" && whooseCarClients.length > 1 && !selectedClient) {
+          return (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <Label>Выберите клиента</Label>
+                <Badge variant="outline">{carNumber}</Badge>
+              </div>
+              
+              <div className="space-y-2 max-h-60 overflow-y-auto">
+                {whooseCarClients.map((client) => (
+                  <Card 
+                    key={client.id} 
+                    className="cursor-pointer hover:bg-muted" 
+                    onClick={() => handleClientSelect(client)}
+                  >
+                    <CardContent className="p-3">
+                      <div className="font-medium">{client.name}</div>
+                      {client.company_name && (
+                        <div className="text-sm text-muted-foreground">{client.company_name}</div>
+                      )}
+                      {client.inn && (
+                        <div className="text-xs text-muted-foreground">ИНН: {client.inn}</div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+              
+              <Button variant="outline" onClick={() => setStep(3)} className="w-full">
+                Назад
+              </Button>
+            </div>
+          )
+        }
+
+        return (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <Label>Работник</Label>
+              {selectedClient && (
+                <Badge variant="outline">{selectedClient.name}</Badge>
+              )}
+            </div>
+            
+            <Select value={workerId} onValueChange={setWorkerId}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите работника" />
+              </SelectTrigger>
+              <SelectContent>
+                {workers.map((worker) => (
+                  <SelectItem key={worker.id} value={worker.id.toString()}>
+                    {worker.name} {worker.surname}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            
+            <div className="flex gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setStep(clientType === "НАЛИЧКА" ? 2 : 3)} 
+                className="flex-1"
+              >
+                Назад
+              </Button>
+              <Button 
+                onClick={() => setStep(5)} 
+                disabled={!workerId}
+                className="flex-1"
+              >
+                Далее
+              </Button>
+            </div>
+          </div>
+        )
+
+      case 5:
+        return (
+          <div className="space-y-4">
+            <Label>Позиция колеса</Label>
+            <Select value={wheelPosition} onValueChange={setWheelPosition}>
+              <SelectTrigger>
+                <SelectValue placeholder="Выберите позицию" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="front-left">Переднее левое</SelectItem>
+                <SelectItem value="front-right">Переднее правое</SelectItem>
+                <SelectItem value="rear-left">Заднее левое</SelectItem>
+                <SelectItem value="rear-right">Заднее правое</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Label>Услуги</Label>
+            <div className="space-y-2 max-h-40 overflow-y-auto">
+              {services.map((service) => (
+                <Card 
+                  key={service.id} 
+                  className={`cursor-pointer transition-colors ${
+                    selectedServices[service.id] ? 'ring-2 ring-primary' : 'hover:bg-muted'
+                  }`}
+                  onClick={() => handleServiceToggle(service.id.toString(), service.price)}
+                >
+                  <CardContent className="p-3">
+                    <div className="flex justify-between items-center">
+                      <span className="font-medium">{service.name}</span>
+                      <span className="font-bold">{service.price} ₽</span>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+
+            <div className="space-y-2">
+              <Label>Комментарий (необязательно)</Label>
+              <Input
+                placeholder="Дополнительная информация"
+                value={comment}
+                onChange={(e) => setComment(e.target.value)}
+              />
+            </div>
+
+            {Object.keys(selectedServices).length > 0 && (
+              <div className="p-3 bg-muted rounded-md">
+                <div className="font-medium">Итого: {calculateTotal()} ₽</div>
+                <div className="text-sm text-muted-foreground">
+                  Выбрано услуг: {Object.keys(selectedServices).length}
+                </div>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              <Button variant="outline" onClick={() => setStep(4)} className="flex-1">
+                Назад
+              </Button>
+              <Button 
+                onClick={handleSubmit} 
+                disabled={!wheelPosition || Object.keys(selectedServices).length === 0 || loading}
+                className="flex-1"
+              >
+                {loading ? "Создание..." : "Создать заказ"}
+              </Button>
+            </div>
+          </div>
+        )
+
+      default:
+        return null
     }
   }
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{order ? "Редактирование заказа" : "Создание заказа"}</DialogTitle>
-          <DialogDescription>
-            {order ? "Измените данные заказа" : "Заполните данные для создания нового заказа"}
-          </DialogDescription>
-        </DialogHeader>
+    <>
+      <Dialog open={open} onOpenChange={onOpenChange}>
+        <DialogContent className="sm:max-w-[500px]">
+          <DialogHeader>
+            <DialogTitle>Создание заказа</DialogTitle>
+            <DialogDescription>
+              Шаг {step} из 5: {
+                step === 1 ? "Тип клиента" :
+                step === 2 ? "Способ оплаты" :
+                step === 3 ? "Номер машины" :
+                step === 4 ? "Работник" :
+                "Услуги"
+              }
+            </DialogDescription>
+          </DialogHeader>
+          
+          {renderStep()}
+        </DialogContent>
+      </Dialog>
 
-        {loading ? (
-          <div className="flex h-[400px] items-center justify-center">
-            <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent"></div>
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <div className="grid gap-6 md:grid-cols-2">
-              <div className="space-y-4">
-                {shouldShowClientSelection && (
-                  <>
-                <div className="space-y-2">
-                  <Label>Тип клиента</Label>
-                  <Select
-                    value={selectedClientType}
-                    onValueChange={setSelectedClientType}
-                    required
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Выберите тип клиента" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {clientTypes.map((type) => (
-                        <SelectItem key={type} value={type}>
-                          {type === "ФИЗЛИЦА" ? "Физическое лицо" : 
-                           type === "КОНТРАГЕНТЫ" ? "Контрагент" : 
-                           type === "АГРЕГАТОРЫ" ? "Агрегатор" : type}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="client_id">Клиент</Label>
-                <Select
-                  value={selectedClient?.id.toString() || ""}
-                  onValueChange={handleClientSelect}
-                  disabled={loading || submitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите клиента" />
-                  </SelectTrigger>
-                  <SelectContent>
-                      {filteredClients.map((client) => (
-                      <SelectItem key={client.id} value={client.id.toString()}>
-                          {client.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                </div>
-                  </>
-                )}
-
-                {!shouldShowClientSelection && cashClient && (
+      {/* Диалог сравнения договоров */}
+      <Dialog open={showContractComparison} onOpenChange={setShowContractComparison}>
+        <DialogContent className="sm:max-w-[800px]">
+          <DialogHeader>
+            <DialogTitle>Сравнение договоров агрегаторов</DialogTitle>
+            <DialogDescription>
+              Машина {carNumber} принадлежит нескольким агрегаторам. Выберите подходящий договор.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+            {contractComparisons.map((comparison) => (
+              <Card 
+                key={comparison.client.id} 
+                className="cursor-pointer hover:shadow-md transition-shadow"
+                onClick={() => handleClientSelect(comparison.client)}
+              >
+                <CardHeader>
+                  <CardTitle className="text-base">{comparison.client.name}</CardTitle>
+                  {comparison.client.company_name && (
+                    <p className="text-sm text-muted-foreground">{comparison.client.company_name}</p>
+                  )}
+                  {comparison.client.inn && (
+                    <p className="text-xs text-muted-foreground">ИНН: {comparison.client.inn}</p>
+                  )}
+                </CardHeader>
+                <CardContent>
                   <div className="space-y-2">
-                    <Label>Клиент</Label>
-                    <div className="p-3 border rounded-md bg-muted">
-                      <span className="font-medium">{cashClient.name}</span>
-                      <span className="text-sm text-muted-foreground ml-2">(автоматически выбран для наличной оплаты)</span>
+                    <div className="text-sm font-medium">Услуги:</div>
+                    {comparison.services.slice(0, 3).map((service) => (
+                      <div key={service.id} className="flex justify-between text-xs">
+                        <span>{service.name}</span>
+                        <span>{service.price} ₽</span>
+                      </div>
+                    ))}
+                    {comparison.services.length > 3 && (
+                      <div className="text-xs text-muted-foreground">
+                        +{comparison.services.length - 3} услуг
+                      </div>
+                    )}
+                    <Separator />
+                    <div className="flex justify-between font-medium">
+                      <span>Итого:</span>
+                      <span>{comparison.total} ₽</span>
                     </div>
                   </div>
-                )}
-              </div>
-
-              <div className="space-y-2">
-                {selectedClient && selectedClient.client_type !== "НАЛИЧКА" ? (
-                  <div className="space-y-2">
-                    <Label htmlFor="vehicle_number">Машина клиента</Label>
-                    <Select
-                      value={formData.vehicle_number}
-                      onValueChange={(value) => handleSelectChange("vehicle_number", value)}
-                      disabled={!!(selectedClient && selectedClient.client_type !== "НАЛИЧКА" && loadingVehicles)}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите машину" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        {clientVehicles.map((vehicle) => (
-                          <SelectItem key={vehicle.id} value={vehicle.number}>
-                            {vehicle.number}
-                          </SelectItem>
-                        ))}
-                      </SelectContent>
-                    </Select>
-                  </div>
-                ) : (
-                  <div className="space-y-2">
-                    <Label htmlFor="vehicle_number">Номер автомобиля</Label>
-                    <Input
-                      id="vehicle_number"
-                      value={formData.vehicle_number}
-                      onChange={(e) => handleInputChange("vehicle_number", e.target.value)}
-                      placeholder="Введите номер автомобиля"
-                      required
-                      disabled={!!(selectedClient && selectedClient.client_type !== "НАЛИЧКА" && loadingVehicles)}
-                    />
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Позиция колеса</Label>
-              <WheelPositionSelector
-                value={selectedWheelPosition}
-                onChange={setSelectedWheelPosition}
-                truckType={selectedTruckType}
-                onTruckTypeChange={setSelectedTruckType}
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label>Услуги</Label>
-              <div className="space-y-4">
-                <Select
-                  value=""
-                  onValueChange={handleServiceSelect}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите услугу" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Array.isArray(services) && services
-                      .filter(service => !formData.service_ids.includes(service.id.toString()))
-                      .map((service) => {
-                        try {
-                          const wheelType = getWheelType(selectedWheelPosition || "all")
-                          const price = getServicePrice(service, wheelType)
-                          return (
-                            <SelectItem key={service.id} value={service.id.toString()}>
-                              {service.name} - {price} ₽ {wheelType === 'dual' ? '(спарка)' : '(одиночка)'}
-                            </SelectItem>
-                          )
-                        } catch (error) {
-                          return (
-                            <SelectItem key={service.id} value={service.id.toString()}>
-                              {service.name} - ошибка расчета цены
-                            </SelectItem>
-                          )
-                        }
-                      })}
-                  </SelectContent>
-                </Select>
-
-                <div className="space-y-2">
-                  <Label>Выбранные услуги</Label>
-                  <div className="space-y-2">
-                    {formData.service_ids.map((serviceId) => {
-                      const service = services.find(s => s.id.toString() === serviceId)
-                      if (!service) return null
-                      
-                      try {
-                        const wheelType = getWheelType(selectedWheelPosition || "all")
-                        const price = getServicePrice(service, wheelType)
-                        
-                        return (
-                          <div key={serviceId} className="flex items-center justify-between rounded-lg border p-3">
-                            <div>
-                              <span className="font-medium">{service.name}</span>
-                              <span className="ml-2 text-sm text-muted-foreground">
-                                {price} ₽ {wheelType === 'dual' ? '(спарка)' : '(одиночка)'}
-                              </span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveService(serviceId)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )
-                      } catch (error) {
-                        return (
-                          <div key={serviceId} className="flex items-center justify-between rounded-lg border p-3">
-                            <div>
-                              <span className="font-medium">{service.name}</span>
-                              <span className="ml-2 text-sm text-red-500">Ошибка расчета цены</span>
-                            </div>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleRemoveService(serviceId)}
-                            >
-                              <X className="h-4 w-4" />
-                            </Button>
-                          </div>
-                        )
-                      }
-                    })}
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="grid w-full items-center gap-1.5">
-                <Label htmlFor="payment_method">Способ оплаты</Label>
-                <Select
-                  value={formData.payment_method}
-                  onValueChange={handlePaymentMethodChange}
-                disabled={loading || submitting}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Выберите способ оплаты" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="НАЛИЧНЫЕ">Наличные</SelectItem>
-                    <SelectItem value="ПЕРЕВОД">Перевод</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <Label>Общая сумма</Label>
-                <div className="text-2xl font-bold">{totalAmount} ₽</div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="description">Описание</Label>
-              <Textarea
-                id="description"
-                name="description"
-                placeholder="Введите описание заказа"
-                value={formData.description}
-                onChange={handleChange}
-                rows={4}
-                required
-              />
-            </div>
-
-            <div className="flex justify-end gap-4">
-              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-                Отмена
-              </Button>
-              <Button type="submit" disabled={submitting || formData.service_ids.length === 0}>
-                {submitting ? (order ? "Сохранение..." : "Создание...") : order ? "Сохранить" : "Создать"}
-              </Button>
-            </div>
-          </form>
-        )}
-      </DialogContent>
-    </Dialog>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+          
+          <div className="flex justify-end">
+            <Button variant="outline" onClick={() => setShowContractComparison(false)}>
+              Отмена
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   )
 } 
+

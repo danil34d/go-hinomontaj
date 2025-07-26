@@ -85,9 +85,15 @@ type Service struct {
 	Name           string    `json:"name" db:"name"`
 	Price          int       `json:"price" db:"price"`
 	ContractID     int       `json:"contract_id" db:"contract_id"`
-	MaterialCardId int       `json:"material_card" db:"materail_card"`
+	MaterialCardId int       `json:"material_card" db:"material_card"`
 	CreatedAt      time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type Compare struct{
+	CompanyName string
+	ServiceName string
+	Price int
 }
 
 // Contract представляет договор с клиентом
@@ -169,9 +175,9 @@ type Worker struct {
 	Surname   string    `json:"surname" db:"surname"`
 	Email     string    `json:"email" db:"email"`
 	Phone     string    `json:"phone" db:"phone"`
-	SalarySchema string    `json:"salary_schema" db:"salary_schema"`
-	TmpSalary    int       `json:"tmp_salary" db:"tmp_salary"`
-	HasCar       bool      `json:"has_car" db:"has_car"`
+	SalarySchema string `json:"salary_schema" db:"salary_schema"`
+	Salary       int    `json:"salary" db:"salary"`
+	HasCar       bool   `json:"has_car" db:"has_car"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 	Password  string    `json:"password" db:"-"`
@@ -187,11 +193,36 @@ type Statistics struct {
 }
 
 type WorkerStatistics struct {
-	TotalOrders       int       `json:"total_orders" db:"total_orders"`
-	TotalOrdersToday  int       `json:"total_orders_today" db:"total_orders_today"`
-	TotalOrdersMonth  int       `json:"total_orders_month" db:"total_orders_month"`
-	TotalRevenue      float64   `json:"total_revenue" db:"total_revenue"`
-	TotalRevenueToday float64   `json:"total_revenue_today" db:"total_revenue_today"`
-	TotalRevenueMonth float64   `json:"total_revenue_month" db:"total_revenue_month"`
-	LastOrder         time.Time `json:"last_order" db:"last_order"`
+	WorkerID      int    `json:"worker_id" db:"worker_id"`
+	WorkerName    string `json:"worker_name" db:"worker_name"`
+	WorkerSurname string `json:"worker_surname" db:"worker_surname"`
+	WorkerPhone   string `json:"worker_phone" db:"worker_phone"`
+	SalarySchema  string `json:"salary_schema" db:"salary_schema"`
+
+	TotalOrders    int `json:"total_orders" db:"total_orders"`
+	TotalRevenue   int `json:"total_revenue" db:"total_revenue"`
+	TotalBonus     int `json:"total_bonus" db:"total_bonus"`
+	TotalPenalties int `json:"total_penalties" db:"total_penalties"`
+	TotalSalary    int `json:"total_salary" db:"total_salary"`
+}
+
+type PenaltyOrBonus struct {
+	ID         int       `json:"id" db:"id"`
+	WorkerID   int       `json:"worker_id" db:"workerID"`
+	Desc       string    `json:"description" db:"description"`
+	Amount     int       `json:"delta" db:"delta"`
+	OrderID    int       `json:"order_id" db:"order_id"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+}
+
+type OnlineDate struct {
+	ID         int       `json:"id" db:"id"`
+	Date		time.Time `json:"date" db:"date"`
+	Name 		string `json:"name" db:"name"`
+	Phone 		string `json:"phone" db:"phone"`
+	CarNumber	string `json:"car_number" db:"car_number"`
+	ClientDesc string `json:"client_desc" db:"client_desc"`
+	ManagerDesc string `json:"manager_desc" db:"manager_desc"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

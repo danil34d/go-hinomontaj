@@ -6,6 +6,7 @@ import (
 	"go-hinomontaj/models"
 	"go-hinomontaj/pkg/logger"
 	"math/rand"
+	"strings"
 	"time"
 )
 
@@ -30,28 +31,36 @@ func (g *TestDataGenerator) GenerateTestData() error {
 	// Инициализируем генератор случайных чисел
 	rand.Seed(time.Now().UnixNano())
 
-	// Генерируем аккаунты
+	// 1. Сначала создаем материальные карты (нужны для услуг)
+	materialCardID, err := g.generateMaterialCards()
+	if err != nil {
+		return err
+	}
+
+	// 2. Генерируем договоры
+	contractIDs, err := g.generateContracts()
+	if err != nil {
+		return err
+	}
+
+	// 3. Генерируем услуги для каждого договора
+	if err := g.generateServices(contractIDs, materialCardID); err != nil {
+		return err
+	}
+
+	// 4. Генерируем клиентов
+	clientIDs, err := g.generateClients(contractIDs)
+	if err != nil {
+		return err
+	}
+
+	// 5. Создаем краевой случай: общая машина для двух агрегаторов
+	if err := g.createSharedCarForAggregators(clientIDs); err != nil {
+		return err
+	}
+
+	// 6. Генерируем аккаунты (в конце, чтобы избежать конфликтов)
 	if err := g.generateAccounts(); err != nil {
-		return err
-	}
-
-	// Генерируем договоры
-	if err := g.generateContracts(); err != nil {
-		return err
-	}
-
-	// Генерируем материальные карты (нужны для услуг)
-	if err := g.generateMaterialCards(); err != nil {
-		return err
-	}
-
-	// Генерируем услуги для каждого договора
-	if err := g.generateServices(); err != nil {
-		return err
-	}
-
-	// Генерируем клиентов
-	if err := g.generateClients(); err != nil {
 		return err
 	}
 
@@ -72,27 +81,33 @@ func (g *TestDataGenerator) generateAccounts() error {
 		Role:     "worker",
 	})
 	if err != nil {
-		logger.Error("Ошибка создания аккаунта работника: %v", err)
-		return err
-	}
+		// Если пользователь уже существует, просто логируем и продолжаем
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "already exists") {
+			logger.Info("Аккаунт работника уже существует")
+		} else {
+			logger.Error("Ошибка создания аккаунта работника: %v", err)
+			return err
+		}
+	} else {
+		// Создаем работника
+		worker := models.Worker{
+			Name:         "Иван",
+			Surname:      "Петров",
+			Email:        "worker@shinomontaj.ru",
+			Phone:        "+7 (999) 123-45-67",
+			SalarySchema: "percentage",
+			Salary:       50000,
+			HasCar:       true,
+		}
 
-	// Создаем работника
-	worker := models.Worker{
-		Name:        "Иван",
-		Surname:     "Петров",
-		Phone:       "+7 (999) 123-45-67",
-		SalarySchema: "percentage",
-		TmpSalary:   50000,
-		HasCar:      true,
-	}
+		_, err = g.services.Worker.Create(worker)
+		if err != nil {
+			logger.Error("Ошибка создания работника: %v", err)
+			return err
+		}
 
-	_, err = g.services.Worker.Create(worker)
-	if err != nil {
-		logger.Error("Ошибка создания работника: %v", err)
-		return err
+		logger.Info("Создан аккаунт работника: ID=%d, Email=worker@shinomontaj.ru, Password=%s", workerUserCreated.ID, workerPassword)
 	}
-
-	logger.Info("Создан аккаунт работника: ID=%d, Email=worker@shinomontaj.ru, Password=%s", workerUserCreated.ID, workerPassword)
 
 	// Создаем аккаунт менеджера
 	managerPassword := "manager123"
@@ -103,100 +118,137 @@ func (g *TestDataGenerator) generateAccounts() error {
 		Role:     "manager",
 	})
 	if err != nil {
-		logger.Error("Ошибка создания аккаунта менеджера: %v", err)
-		return err
+		// Если пользователь уже существует, просто логируем и продолжаем
+		if strings.Contains(err.Error(), "duplicate key") || strings.Contains(err.Error(), "already exists") {
+			logger.Info("Аккаунт менеджера уже существует")
+		} else {
+			logger.Error("Ошибка создания аккаунта менеджера: %v", err)
+			return err
+		}
+	} else {
+		logger.Info("Создан аккаунт менеджера: ID=%d, Email=%s, Password=%s", managerUserCreated.ID, managerUserCreated.Email, managerPassword)
 	}
-
-	logger.Info("Создан аккаунт менеджера: ID=%d, Email=%s, Password=%s", managerUserCreated.ID, managerUserCreated.Email, managerPassword)
 
 	return nil
 }
 
 // generateContracts создает договоры для разных типов клиентов
-func (g *TestDataGenerator) generateContracts() error {
+func (g *TestDataGenerator) generateContracts() ([]int, error) {
 	logger.Info("Генерация договоров...")
 
 	contracts := []models.Contract{
 		{
-			Number:     "ДОГ-001-2024",
-			ClientType: "Наличка",
+			Number:               "ДОГ-001-2024",
+			Description:          "Договор для наличных клиентов",
+			ClientType:           "НАЛИЧКА",
+			ClientCompanyName:    "Наличные клиенты",
+			ClientCompanyAddress: "Не указан",
+			ClientCompanyPhone:   "Не указан",
+			ClientCompanyEmail:   "cash@example.com",
+			ClientCompanyINN:     "0000000000",
+			ClientCompanyKPP:     "000000000",
+			ClientCompanyOGRN:    "0000000000000",
 		},
 		{
-			Number:     "ДОГ-002-2024",
-			ClientType: "Контрагент",
+			Number:               "ДОГ-002-2024",
+			Description:          "Договор для контрагентов",
+			ClientType:           "КОНТРАГЕНТЫ",
+			ClientCompanyName:    "ООО Контрагент",
+			ClientCompanyAddress: "г. Москва, ул. Пример, д. 1",
+			ClientCompanyPhone:   "+7 (495) 123-45-67",
+			ClientCompanyEmail:   "contractor@example.com",
+			ClientCompanyINN:     "1234567890",
+			ClientCompanyKPP:     "123456789",
+			ClientCompanyOGRN:    "1234567890123",
 		},
 		{
-			Number:     "ДОГ-003-2024",
-			ClientType: "Агрегатор",
+			Number:               "ДОГ-003-2024",
+			Description:          "Договор для агрегаторов (Яндекс Такси)",
+			ClientType:           "АГРЕГАТОРЫ",
+			ClientCompanyName:    "ООО Яндекс Такси",
+			ClientCompanyAddress: "г. Москва, ул. Льва Толстого, д. 16",
+			ClientCompanyPhone:   "+7 (495) 555-66-77",
+			ClientCompanyEmail:   "yandex@aggregator.ru",
+			ClientCompanyINN:     "9876543210",
+			ClientCompanyKPP:     "987654321",
+			ClientCompanyOGRN:    "9876543210987",
 		},
 		{
-			Number:     "ДОГ-004-2024",
-			ClientType: "Контрагент",
-		},
-		{
-			Number:     "ДОГ-005-2024",
-			ClientType: "Агрегатор",
+			Number:               "ДОГ-004-2024",
+			Description:          "Договор для агрегаторов (Ситимобил)",
+			ClientType:           "АГРЕГАТОРЫ",
+			ClientCompanyName:    "ООО Ситимобил",
+			ClientCompanyAddress: "г. Москва, ул. Садовническая, д. 82",
+			ClientCompanyPhone:   "+7 (495) 777-88-99",
+			ClientCompanyEmail:   "citymobil@aggregator.ru",
+			ClientCompanyINN:     "1122334455",
+			ClientCompanyKPP:     "112233445",
+			ClientCompanyOGRN:    "1122334455667",
 		},
 	}
 
+	contractIDs := make([]int, 0, len(contracts))
 	for _, contract := range contracts {
-		_, err := g.services.Contract.Create(contract)
+		id, err := g.services.Contract.Create(contract)
 		if err != nil {
 			logger.Error("Ошибка создания договора %s: %v", contract.Number, err)
-			return err
+			return nil, err
 		}
-		logger.Info("Создан договор: %s для типа клиентов: %s", contract.Number, contract.ClientType)
+		contractIDs = append(contractIDs, id)
+		logger.Info("Создан договор: %s для типа клиентов: %s (ID: %d)", contract.Number, contract.ClientType, id)
 	}
 
-	return nil
+	return contractIDs, nil
 }
 
 // generateClients создает клиентов разных типов
-func (g *TestDataGenerator) generateClients() error {
+func (g *TestDataGenerator) generateClients(contractIDs []int) (map[string]int, error) {
 	logger.Info("Генерация клиентов...")
+	
+	clientIDs := make(map[string]int)
 
 	clients := []models.Client{
 		{
+			Name:         "Наличка",
+			ClientType:   "НАЛИЧКА",
+			OwnerPhone:   "+7 (000) 000-00-00",
+			ManagerPhone: "+7 (000) 000-00-00",
+			ContractID:   contractIDs[0], // Договор для налички
+		},
+		{
 			Name:         "ООО 'Автосервис Плюс'",
-			ClientType:   "Контрагент",
+			ClientType:   "КОНТРАГЕНТЫ",
 			OwnerPhone:   "+7 (495) 123-45-67",
 			ManagerPhone: "+7 (495) 123-45-68",
-			ContractID:   2, // ДОГ-002-2024
+			ContractID:   contractIDs[1], // Договор для контрагентов
 		},
 		{
-			Name:         "ИП Сидоров А.А.",
-			ClientType:   "Наличка",
-			OwnerPhone:   "+7 (999) 111-22-33",
-			ManagerPhone: "+7 (999) 111-22-33",
-			ContractID:   1, // ДОГ-001-2024
-		},
-		{
-			Name:         "ООО 'Такси Экспресс'",
-			ClientType:   "Агрегатор",
+			Name:         "Яндекс Такси",
+			ClientType:   "АГРЕГАТОРЫ",
 			OwnerPhone:   "+7 (495) 555-66-77",
 			ManagerPhone: "+7 (495) 555-66-78",
-			ContractID:   3, // ДОГ-003-2024
+			ContractID:   contractIDs[2], // Договор Яндекс Такси
 		},
 		{
 			Name:         "ООО 'Грузоперевозки'",
-			ClientType:   "Контрагент",
+			ClientType:   "КОНТРАГЕНТЫ",
 			OwnerPhone:   "+7 (495) 777-88-99",
 			ManagerPhone: "+7 (495) 777-88-90",
-			ContractID:   4, // ДОГ-004-2024
+			ContractID:   contractIDs[1], // Договор для контрагентов
 		},
 		{
 			Name:         "ИП Козлов В.В.",
-			ClientType:   "Наличка",
+			ClientType:   "НАЛИЧКА",
 			OwnerPhone:   "+7 (999) 444-55-66",
 			ManagerPhone: "+7 (999) 444-55-66",
-			ContractID:   1, // ДОГ-001-2024
+			ContractID:   contractIDs[0], // Договор для налички
 		},
 		{
-			Name:         "ООО 'Доставка Быстро'",
-			ClientType:   "Агрегатор",
+			Name:         "Ситимобил",
+			ClientType:   "АГРЕГАТОРЫ",
 			OwnerPhone:   "+7 (495) 999-00-11",
 			ManagerPhone: "+7 (495) 999-00-12",
-			ContractID:   5, // ДОГ-005-2024
+			ContractID:   contractIDs[3], // Договор Ситимобил
 		},
 	}
 
@@ -204,26 +256,31 @@ func (g *TestDataGenerator) generateClients() error {
 		clientID, err := g.services.Client.Create(client)
 		if err != nil {
 			logger.Error("Ошибка создания клиента %s: %v", client.Name, err)
-			return err
+			return nil, err
 		}
 
-		// Добавляем автомобили для клиента
-		if err := g.addCarsToClient(clientID, client.ClientType); err != nil {
-			logger.Error("Ошибка добавления автомобилей для клиента %s: %v", client.Name, err)
-			return err
+		// Сохраняем ID клиента
+		clientIDs[client.Name] = clientID
+
+		// Добавляем автомобили для клиента (кроме "Наличка")
+		if client.Name != "Наличка" {
+			if err := g.addCarsToClient(clientID, client.ClientType); err != nil {
+				logger.Error("Ошибка добавления автомобилей для клиента %s: %v", client.Name, err)
+				return nil, err
+			}
 		}
 
 		logger.Info("Создан клиент: ID=%d, %s (тип: %s)", clientID, client.Name, client.ClientType)
 	}
 
-	return nil
+	return clientIDs, nil
 }
 
 // addCarsToClient добавляет автомобили клиенту
 func (g *TestDataGenerator) addCarsToClient(clientID int, clientType string) error {
 	carCount := 1
-	if clientType == "Контрагент" || clientType == "Агрегатор" {
-		carCount = rand.Intn(5) + 3 // 3-7 автомобилей
+	if clientType == "КОНТРАГЕНТЫ" || clientType == "АГРЕГАТОРЫ" {
+		carCount = rand.Intn(3) + 2 // 2-4 автомобиля
 	}
 
 	cars := []models.Car{
@@ -246,143 +303,136 @@ func (g *TestDataGenerator) addCarsToClient(clientID int, clientType string) err
 }
 
 // generateServices создает услуги для каждого договора
-func (g *TestDataGenerator) generateServices() error {
+func (g *TestDataGenerator) generateServices(contractIDs []int, materialCardID int) error {
 	logger.Info("Генерация услуг...")
 
-	// Базовые услуги с ценами для налички (договор ID=1)
-	cashServices := map[string]int{
-"Снятие колеса одиночка":          300,
-"Установка колеса одиночка":       300,
-"Демонтаж резины с диска":         300,
-"Монтаж установка резины на диск": 300,
-"Снятие спарка":                   350,
-"Установка спарка":                350,
-"Протяжка колесных гаек 1 колесо": 150,
-"Подкачка 1 колеса":               50,
-"Балансировка 1 колеса":           700,
-"Установка заплаты р13":           900,
-"Установка заплаты р15":           1000,
-"Установка заплаты р19, р20, р23": 1300,
-"Установка заплаты р25":           1800,
-"Установка заплаты RS-25":         2300,
+	// Базовые услуги с ценами для налички
+	baseServices := map[string]int{
+		"Снятие колеса одиночка":          300,
+		"Установка колеса одиночка":       300,
+		"Демонтаж резины с диска":         300,
+		"Монтаж установка резины на диск": 300,
+		"Снятие спарка":                   350,
+		"Установка спарка":                350,
+		"Протяжка колесных гаек 1 колесо": 150,
+		"Подкачка 1 колеса":               50,
+		"Балансировка 1 колеса":           700,
+		"Установка заплаты р13":           900,
+		"Установка заплаты р15":           1000,
+		"Установка заплаты р19, р20, р23": 1300,
+		"Установка заплаты р25":           1800,
+		"Установка заплаты RS-25":         2300,
+		"Произвольная услуга":             0,
 	}
 
-	// Создаем услуги для договора налички (ID=1)
-	for name, price := range cashServices {
-		service := models.Service{
-			Name:           name,
-			Price:          price,
-			ContractID:     1, // Договор для налички
-			MaterialCardId: 1, // Материальная карта ID=1
+	// Коэффициенты скидки для разных типов договоров
+	discountMultipliers := []float64{1.0, 0.9, 0.85, 0.80} // наличка, контрагенты, Яндекс Такси, Ситимобил
+
+	for i, contractID := range contractIDs {
+		multiplier := discountMultipliers[i%len(discountMultipliers)]
+		
+		for name, basePrice := range baseServices {
+			finalPrice := int(float64(basePrice) * multiplier)
+			
+			service := models.Service{
+				Name:           name,
+				Price:          finalPrice,
+				ContractID:     contractID,
+				MaterialCardId: materialCardID,
+			}
+			
+			_, err := g.services.Service.Create(service)
+			if err != nil {
+				logger.Error("Ошибка создания услуги %s для договора %d: %v", name, contractID, err)
+				return err
+			}
 		}
-		_, err := g.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка создания услуги %s: %v", name, err)
-			return err
-		}
+		
+		logger.Info("Создано %d услуг для договора ID:%d (множитель цены: %.2f)", len(baseServices), contractID, multiplier)
 	}
 
-	// Создаем услуги для договора контрагентов (ID=2) с скидкой 10%
-	for name, price := range cashServices {
-		service := models.Service{
-			Name:           name,
-			Price:          int(float64(price) * 0.9), // 10% скидка
-			ContractID:     2, // Договор для контрагентов
-			MaterialCardId: 1, // Материальная карта ID=1
-		}
-		_, err := g.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка создания услуги %s: %v", name, err)
-			return err
-		}
-	}
-
-	// Создаем услуги для договора агрегаторов (ID=3) с скидкой 15%
-	for name, price := range cashServices {
-		service := models.Service{
-			Name:           name,
-			Price:          int(float64(price) * 0.85), // 15% скидка
-			ContractID:     3, // Договор для агрегаторов
-			MaterialCardId: 1, // Материальная карта ID=1
-		}
-		_, err := g.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка создания услуги %s: %v", name, err)
-			return err
-		}
-	}
-
-	// Создаем услуги для второго договора контрагентов (ID=4) с скидкой 12%
-	for name, price := range cashServices {
-		service := models.Service{
-			Name:           name,
-			Price:          int(float64(price) * 0.88), // 12% скидка
-			ContractID:     4,
-			MaterialCardId: 1, // Материальная карта ID=1
-		}
-		_, err := g.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка создания услуги %s: %v", name, err)
-			return err
-		}
-	}
-
-	// Создаем услуги для второго договора агрегаторов (ID=5) с скидкой 18%
-	for name, price := range cashServices {
-		service := models.Service{
-			Name:           name,
-			Price:          int(float64(price) * 0.82), // 18% скидка
-			ContractID:     5,
-			MaterialCardId: 1, // Материальная карта ID=1
-		}
-		_, err := g.services.Service.Create(service)
-		if err != nil {
-			logger.Error("Ошибка создания услуги %s: %v", name, err)
-			return err
-		}
-	}
-
-	logger.Info("Услуги успешно созданы для всех договоров")
 	return nil
 }
 
 // generateMaterialCards создает материальные карты
-func (g *TestDataGenerator) generateMaterialCards() error {
+func (g *TestDataGenerator) generateMaterialCards() (int, error) {
 	logger.Info("Генерация материальных карт...")
 
 	materialCard := models.MaterialCard{
-		Rs25:  100,
-		R19:   150,
-		R20:   120,
-		R25:   80,
-		R251:  60,
-		R13:   200,
-		R15:   180,
-		Foot9: 50,
+		Rs25:   100,
+		R19:    150,
+		R20:    120,
+		R25:    80,
+		R251:   60,
+		R13:    200,
+		R15:    180,
+		Foot9:  50,
 		Foot12: 40,
 		Foot15: 30,
 	}
 
-	_, err := g.services.MaterialCard.Create(materialCard)
+	materialCardID, err := g.services.MaterialCard.Create(materialCard)
 	if err != nil {
 		logger.Error("Ошибка создания материальной карты: %v", err)
+		return 0, err
+	}
+
+	logger.Info("Материальная карта успешно создана с ID: %d", materialCardID)
+	return materialCardID, nil
+}
+
+// createSharedCarForAggregators создает общую машину для двух агрегаторов
+func (g *TestDataGenerator) createSharedCarForAggregators(clientIDs map[string]int) error {
+	logger.Info("Создание общей машины для агрегаторов...")
+
+	// Получаем ID клиентов-агрегаторов
+	yandexID, yandexExists := clientIDs["Яндекс Такси"]
+	citymobilID, citymobilExists := clientIDs["Ситимобил"]
+
+	if !yandexExists || !citymobilExists {
+		logger.Warning("Не найдены клиенты-агрегаторы для создания общей машины")
+		return nil
+	}
+
+	// Создаем общую машину
+	sharedCar := models.Car{
+		Number: "A777BB777", // Специальный номер для краевого случая (латинские буквы)
+		Model:  "Toyota Prius", // Типичная машина для такси
+		Year:   2021,
+	}
+
+	// Добавляем машину первому агрегатору (Яндекс Такси)
+	err := g.services.Client.AddCarToClient(yandexID, sharedCar)
+	if err != nil {
+		logger.Error("Ошибка добавления общей машины к Яндекс Такси: %v", err)
 		return err
 	}
 
-	logger.Info("Материальная карта успешно создана")
+	// Добавляем ту же машину второму агрегатору (Ситимобил)
+	// Машина уже существует в БД, поэтому создается только связь в clients_cars
+	err = g.services.Client.AddCarToClient(citymobilID, sharedCar)
+	if err != nil {
+		logger.Error("Ошибка добавления общей машины к Ситимобил: %v", err)
+		return err
+	}
+
+	logger.Info("Создана общая машина %s для агрегаторов: Яндекс Такси (ID:%d) и Ситимобил (ID:%d)", 
+		sharedCar.Number, yandexID, citymobilID)
+	
 	return nil
 }
 
 // generateCarNumber генерирует случайный номер автомобиля
 func generateCarNumber() string {
-	letters := []string{"А", "Б", "В", "Г", "Д", "Е", "Ё", "Ж", "З", "И", "Й", "К", "Л", "М", "Н", "О", "П", "Р", "С", "Т", "У", "Ф", "Х", "Ц", "Ч", "Ш", "Щ", "Ъ", "Ы", "Ь", "Э", "Ю", "Я"}
-	
-	// Генерируем номер в формате А123БВ77
+	// Используем латинские буквы для соответствия регулярному выражению в БД
+	letters := []string{"A", "B", "C", "E", "H", "K", "M", "O", "P", "T", "X", "Y"}
+
+	// Генерируем номер в формате A123BC77
 	letter1 := letters[rand.Intn(len(letters))]
 	digits1 := rand.Intn(900) + 100 // 100-999
 	letter2 := letters[rand.Intn(len(letters))]
 	letter3 := letters[rand.Intn(len(letters))]
 	digits2 := rand.Intn(90) + 10 // 10-99
-	
+
 	return fmt.Sprintf("%s%d%s%s%d", letter1, digits1, letter2, letter3, digits2)
 }

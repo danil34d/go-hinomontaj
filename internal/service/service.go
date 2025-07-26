@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"go-hinomontaj/internal/repository/postgres"
 	"go-hinomontaj/models"
+	"time"
 
 	"github.com/jmoiron/sqlx"
 )
@@ -51,7 +52,12 @@ type Worker interface {
 	Update(id int, worker models.Worker) error
 	Delete(id int) error
 	GetByUserId(userId int) (models.Worker, error)
-	GetStatistics(workerId int) (models.WorkerStatistics, error)
+	GetStatistics(workerId int, start time.Time, end time.Time) (models.WorkerStatistics, error)
+	AddBonus(bonus models.PenaltyOrBonus) error
+	GetBonuses(workerID int) ([]models.PenaltyOrBonus, error)
+	AddPenalty(penalty models.PenaltyOrBonus) error
+	GetPenalties(workerID int) ([]models.PenaltyOrBonus, error)
+	Salary(workerID int, start time.Time) (int, error)
 }
 
 type Client interface {
@@ -65,6 +71,12 @@ type Client interface {
 	GetTypes() ([]string, error)
 	UploadCarsFromExcel(clientId int, fileData []byte) error
 	GetCarsTemplate() (*bytes.Buffer, error)
+	WhooseCar(car string) ([]models.Client, error)
+
+	// ONLINE DATE
+	OnlineDate(date *models.OnlineDate) error
+	GetOnlineDate() ([]models.OnlineDate, error)
+	UpdateOnlineDate(date models.OnlineDate) error
 }
 
 type Order interface {
@@ -73,7 +85,6 @@ type Order interface {
 	GetByWorkerId(workerId int) ([]models.Order, error)
 	Update(id int, order models.Order) error
 	Delete(id int) error
-	GetStatistics() (models.Statistics, error)
 }
 
 type Service interface {
@@ -113,7 +124,6 @@ type Repository interface {
 	GetWorkerByName(name string) (models.Worker, error)
 	GetWorkerById(id int) (models.Worker, error)
 	GetWorkerByUserId(userId int) (models.Worker, error)
-	GetWorkerStatistics(workerId int) (models.WorkerStatistics, error)
 	UpdateWorker(id int, worker models.Worker) error
 	DeleteWorker(id int) error
 
@@ -127,6 +137,7 @@ type Repository interface {
 	DeleteClient(id int) error
 	GetClientTypes() ([]string, error)
 	CarExists(number string) (bool, error)
+	WhooseCar(car string) ([]models.Client, error)
 
 	//Services
 	CreateService(service models.Service) (int, error)
@@ -156,5 +167,16 @@ type Repository interface {
 	GetOrdersByWorkerId(workerId int) ([]models.Order, error)
 	UpdateOrder(id int, order models.Order) error
 	DeleteOrder(id int) error
-	GetOrderStatistics() (models.Statistics, error)
+
+	// OnlineDate
+	OnlineDate(date *models.OnlineDate) error
+	GetOnlineDate() ([]models.OnlineDate, error)
+	UpdateOnlineDate(date models.OnlineDate) error
+
+	// Economic
+	AddPenalty(penalty models.PenaltyOrBonus) error
+	AddBonus(penalty models.PenaltyOrBonus) error
+	GetBonuses(workerID int) ([]models.PenaltyOrBonus, error)
+	GetPenalties(workerID int) ([]models.PenaltyOrBonus, error)
+	GetWorkerStatistic(workerID int, start, end time.Time) (models.WorkerStatistics, error)
 }

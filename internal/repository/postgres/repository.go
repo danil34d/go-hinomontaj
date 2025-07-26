@@ -13,7 +13,6 @@ type Repository struct {
 	db *sqlx.DB
 }
 
-
 func (r *Repository) GetServicePricesByContract(contractID int) ([]models.Service, error) {
 	var servicePrices []models.Service
 	query := `
@@ -43,7 +42,6 @@ func (r *Repository) CreateContract(contract models.Contract) (int, error) {
 	return id, nil
 }
 
-
 func (r *Repository) GetAllContracts() ([]models.Contract, error) {
 	var contracts []models.Contract
 	query := `
@@ -67,8 +65,6 @@ func (r *Repository) DeleteContract(id int) error {
 	//TODO implement me
 	panic("implement me")
 }
-
-
 
 func NewRepository(db *sqlx.DB) *Repository {
 	return &Repository{db: db}
@@ -131,12 +127,12 @@ func (r *Repository) GetUserById(id int) (models.User, error) {
 func (r *Repository) CreateWorker(worker models.Worker) (int, error) {
 	var id int
 	query := `
-		INSERT INTO workers (name, surname, email, phone, salary_schema, tmp_salary, has_car)
+		INSERT INTO workers (name, surname, email, phone, salary_schema, salary, has_car)
 		VALUES ($1, $2, $3, $4, $5, $6, $7)
 		RETURNING id`
 
 	logger.Debug("Создание нового работника: %s %s", worker.Name, worker.Surname)
-	err := r.db.QueryRow(query, worker.Name, worker.Surname, worker.Email, worker.Phone, worker.SalarySchema, worker.TmpSalary, worker.HasCar).Scan(&id)
+	err := r.db.QueryRow(query, worker.Name, worker.Surname, worker.Email, worker.Phone, worker.SalarySchema, worker.Salary, worker.HasCar).Scan(&id)
 	if err != nil {
 		logger.Error("Ошибка при создании работника: %v", err)
 		return 0, fmt.Errorf("ошибка при создании работника: %w", err)
@@ -149,7 +145,7 @@ func (r *Repository) CreateWorker(worker models.Worker) (int, error) {
 func (r *Repository) GetAllWorkers() ([]models.Worker, error) {
 	var workers []models.Worker
 	query := `
-		SELECT id, name, surname, email, phone, salary_schema, tmp_salary, has_car, created_at, updated_at
+		SELECT id, name, surname, email, phone, salary_schema, salary, has_car, created_at, updated_at
 		FROM workers
 		ORDER BY id`
 
@@ -167,7 +163,7 @@ func (r *Repository) GetAllWorkers() ([]models.Worker, error) {
 func (r *Repository) GetWorkerById(id int) (models.Worker, error) {
 	var worker models.Worker
 	query := `
-		SELECT id, name, surname, email, phone, salary_schema, tmp_salary, has_car, created_at, updated_at
+		SELECT id, name, surname, email, phone, salary_schema, salary, has_car, created_at, updated_at
 		FROM workers
 		WHERE id = $1`
 
@@ -185,11 +181,11 @@ func (r *Repository) GetWorkerById(id int) (models.Worker, error) {
 func (r *Repository) UpdateWorker(id int, worker models.Worker) error {
 	query := `
 		UPDATE workers
-		SET name = $1, surname = $2, email = $3, phone = $4, salary_schema = $5, tmp_salary = $6, has_car = $7, updated_at = CURRENT_TIMESTAMP
+		SET name = $1, surname = $2, email = $3, phone = $4, salary_schema = $5, salary = $6, has_car = $7, updated_at = CURRENT_TIMESTAMP
 		WHERE id = $8`
 
 	logger.Debug("Обновление данных работника ID: %d", id)
-	result, err := r.db.Exec(query, worker.Name, worker.Surname, worker.Email, worker.Phone, worker.SalarySchema, worker.TmpSalary, worker.HasCar, id)
+	result, err := r.db.Exec(query, worker.Name, worker.Surname, worker.Email, worker.Phone, worker.SalarySchema, worker.Salary, worker.HasCar, id)
 	if err != nil {
 		logger.Error("Ошибка при обновлении работника: %v", err)
 		return fmt.Errorf("ошибка при обновлении работника: %w", err)
@@ -320,34 +316,49 @@ func (r *Repository) AddCarToClient(clientId int, car models.Car) error {
 	}
 	defer tx.Rollback()
 
-	// Проверяем существование автомобиля в рамках транзакции
-	var exists bool
-	query := `SELECT EXISTS(SELECT 1 FROM cars WHERE number = $1)`
-	err = tx.QueryRow(query, car.Number).Scan(&exists)
-	if err != nil {
-		logger.Error("Ошибка при проверке существования автомобиля: %v", err)
-		return fmt.Errorf("ошибка при проверке существования автомобиля: %w", err)
-	}
-
-	if exists {
-		logger.Warning("Автомобиль с номером %s уже существует", car.Number)
-		return fmt.Errorf("автомобиль с номером %s уже существует", car.Number)
-	}
-
-	// Создаем запись автомобиля
-	query = `
-		INSERT INTO cars (number, model, year, created_at, updated_at)
-		VALUES ($1, $2, $3, NOW(), NOW())
-		RETURNING id`
-
 	var carId int
-	err = tx.QueryRow(query, car.Number, car.Model, car.Year).Scan(&carId)
+
+	// Сначала пытаемся найти существующую машину
+	query := `SELECT id FROM cars WHERE number = $1`
+	err = tx.QueryRow(query, car.Number).Scan(&carId)
+	
 	if err != nil {
-		logger.Error("Ошибка при создании автомобиля: %v", err)
-		return fmt.Errorf("ошибка при создании автомобиля: %w", err)
+		// Если машина не найдена, создаем новую
+		if err.Error() == "sql: no rows in result set" {
+			query = `
+				INSERT INTO cars (number, model, year, created_at, updated_at)
+				VALUES ($1, $2, $3, NOW(), NOW())
+				RETURNING id`
+
+			err = tx.QueryRow(query, car.Number, car.Model, car.Year).Scan(&carId)
+			if err != nil {
+				logger.Error("Ошибка при создании автомобиля: %v", err)
+				return fmt.Errorf("ошибка при создании автомобиля: %w", err)
+			}
+			logger.Debug("Создана новая машина ID:%d с номером %s", carId, car.Number)
+		} else {
+			logger.Error("Ошибка при поиске автомобиля: %v", err)
+			return fmt.Errorf("ошибка при поиске автомобиля: %w", err)
+		}
+	} else {
+		logger.Debug("Найдена существующая машина ID:%d с номером %s", carId, car.Number)
 	}
 
-	// Связываем автомобиль с клиентом
+	// Проверяем, не связана ли уже эта машина с данным клиентом
+	var linkExists bool
+	query = `SELECT EXISTS(SELECT 1 FROM clients_cars WHERE client_id = $1 AND car_id = $2)`
+	err = tx.QueryRow(query, clientId, carId).Scan(&linkExists)
+	if err != nil {
+		logger.Error("Ошибка при проверке связи клиент-машина: %v", err)
+		return fmt.Errorf("ошибка при проверке связи клиент-машина: %w", err)
+	}
+
+	if linkExists {
+		logger.Warning("Машина с номером %s уже принадлежит клиенту ID:%d", car.Number, clientId)
+		return fmt.Errorf("машина с номером %s уже принадлежит этому клиенту", car.Number)
+	}
+
+	// Создаем связь автомобиль-клиент
 	query = `
 		INSERT INTO clients_cars (client_id, car_id)
 		VALUES ($1, $2)`
@@ -363,7 +374,7 @@ func (r *Repository) AddCarToClient(clientId int, car models.Car) error {
 		return fmt.Errorf("ошибка при завершении транзакции: %w", err)
 	}
 
-	logger.Info("Успешно добавлен автомобиль ID:%d клиенту ID:%d", carId, clientId)
+	logger.Info("Успешно добавлена машина ID:%d (номер: %s) клиенту ID:%d", carId, car.Number, clientId)
 	return nil
 }
 
@@ -465,13 +476,13 @@ func (r *Repository) GetAllWithPrices() ([]models.ServiceWithPrices, error) {
 
 	// Группируем услуги по названию
 	servicesMap := make(map[string]*models.ServiceWithPrices)
-	
+
 	for _, sp := range servicePrices {
 		if _, exists := servicesMap[sp.ServiceName]; !exists {
 			servicesMap[sp.ServiceName] = &models.ServiceWithPrices{
 				Name:         sp.ServiceName,
 				MaterialCard: sp.MaterialCardID,
-				Prices:       []struct {
+				Prices: []struct {
 					ContractID   int    `json:"contract_id"`
 					ContractName string `json:"contract_name"`
 					Price        int    `json:"price"`
@@ -480,7 +491,7 @@ func (r *Repository) GetAllWithPrices() ([]models.ServiceWithPrices, error) {
 				UpdatedAt: time.Now(),
 			}
 		}
-		
+
 		servicesMap[sp.ServiceName].Prices = append(servicesMap[sp.ServiceName].Prices, struct {
 			ContractID   int    `json:"contract_id"`
 			ContractName string `json:"contract_name"`
@@ -500,6 +511,26 @@ func (r *Repository) GetAllWithPrices() ([]models.ServiceWithPrices, error) {
 
 	logger.Debug("Получено услуг с ценами: %d", len(services))
 	return services, nil
+}
+func (r *Repository) WhooseCar(car string) ([]models.Client, error) {
+	var clients []models.Client
+	query := `
+		SELECT DISTINCT c.id, c.name, c.client_type, c.owner_phone, c.manager_phone, c.contract_id, c.created_at, c.updated_at,
+			   COALESCE(array_remove(array_agg(cars.number), NULL), ARRAY[]::varchar[]) as car_numbers
+		FROM clients c
+		JOIN clients_cars cc ON c.id = cc.client_id 
+		JOIN cars ON cars.id = cc.car_id 
+		WHERE cars.number = $1
+		GROUP BY c.id, c.name, c.client_type, c.owner_phone, c.manager_phone, c.contract_id, c.created_at, c.updated_at`
+	
+	err := r.db.Select(&clients, query, car)
+	if err != nil {
+		logger.Error("Ошибка при поиске владельцев машины %s: %v", car, err)
+		return nil, fmt.Errorf("ошибка при поиске владельцев машины: %w", err)
+	}
+	
+	logger.Debug("Найдено %d владельцев для машины %s", len(clients), car)
+	return clients, nil
 }
 
 func (r *Repository) UpdateService(id int, service models.Service) error {
@@ -575,17 +606,14 @@ func (r *Repository) CreateOrder(order models.Order) (int, error) {
 			if service.ServiceID == 0 {
 				return 0, fmt.Errorf("не указан ID услуги")
 			}
-			if service.Description == "" {
-				return 0, fmt.Errorf("не указано описание услуги")
-			}
 			if service.Price <= 0 {
 				return 0, fmt.Errorf("неверная цена услуги")
 			}
 
 			_, err = tx.Exec(`
-				INSERT INTO order_services (order_id, service_id, service_description, wheel_position, price)
-				VALUES ($1, $2, $3, $4, $5)`,
-				orderId, service.ServiceID, service.Description, service.WheelPosition, service.Price)
+				INSERT INTO order_services (order_id, service_id, client_id, service_description, wheel_position, price)
+				VALUES ($1, $2, $3, $4, $5, $6)`,
+				orderId, service.ServiceID, order.ClientID, service.Description, service.WheelPosition, service.Price)
 			if err != nil {
 				logger.Error("Ошибка при добавлении услуги к заказу: %v", err)
 				return 0, fmt.Errorf("ошибка при добавлении услуги к заказу: %w", err)
@@ -695,9 +723,9 @@ func (r *Repository) UpdateOrder(id int, order models.Order) error {
 	// Добавляем новые услуги
 	for _, service := range order.Services {
 		_, err = tx.Exec(`
-			INSERT INTO order_services (order_id, service_id, service_description, wheel_position, price)
-			VALUES ($1, $2, $3, $4, $5)`,
-			id, service.ServiceID, service.Description, service.WheelPosition, service.Price)
+			INSERT INTO order_services (order_id, service_id, client_id, service_description, wheel_position, price)
+			VALUES ($1, $2, $3, $4, $5, $6)`,
+			id, service.ServiceID, order.ClientID, service.Description, service.WheelPosition, service.Price)
 		if err != nil {
 			logger.Error("Ошибка при добавлении услуги к заказу: %v", err)
 			return fmt.Errorf("ошибка при добавлении услуги к заказу: %w", err)
@@ -827,7 +855,7 @@ func (r *Repository) DeleteMaterialCard(id int) error {
 	result, err := r.db.Exec(query, id)
 	if err != nil {
 		logger.Error("Ошибка при удалении материала карты: %v", err)
-		return fmt.Errorf("ошибка при удалении материала карты: %w", err)	
+		return fmt.Errorf("ошибка при удалении материала карты: %w", err)
 	}
 
 	rowsAffected, err := result.RowsAffected()
@@ -873,14 +901,14 @@ func (r *Repository) SpellMaterial(id int) error {
 	`
 
 	result, err := r.db.Exec(query, materialCard.Rs25, materialCard.R19, materialCard.R20,
-		 materialCard.R25, materialCard.R251, materialCard.R13, materialCard.R15, materialCard.Foot9,
-		 materialCard.Foot12, materialCard.Foot15, id)
+		materialCard.R25, materialCard.R251, materialCard.R13, materialCard.R15, materialCard.Foot9,
+		materialCard.Foot12, materialCard.Foot15, id)
 
 	rowsAffected, err := result.RowsAffected()
 	if err != nil {
 		return fmt.Errorf("ошибка при получении количества удаленных строк: %w", err)
 	}
-	
+
 	if rowsAffected == 0 {
 		return fmt.Errorf("материал карты с ID %d не найден", id)
 	}
@@ -939,7 +967,7 @@ func (r *Repository) GetClientTypes() ([]string, error) {
 func (r *Repository) GetWorkerByName(name string) (models.Worker, error) {
 	var worker models.Worker
 	query := `
-		SELECT id, name, surname, email, phone, salary_schema, tmp_salary, has_car, created_at, updated_at
+		SELECT id, name, surname, email, phone, salary_schema, salary, has_car, created_at, updated_at
 		FROM workers
 		WHERE name = $1`
 
@@ -959,7 +987,7 @@ func (r *Repository) GetWorkerByName(name string) (models.Worker, error) {
 func (r *Repository) GetWorkerByUserId(userId int) (models.Worker, error) {
 	var worker models.Worker
 	query := `
-		SELECT w.id, w.name, w.surname, w.email, w.phone, w.salary_schema, w.tmp_salary, w.has_car, w.created_at, w.updated_at
+		SELECT w.id, w.name, w.surname, w.email, w.phone, w.salary_schema, w.salary, w.has_car, w.created_at, w.updated_at
 		FROM workers w
 		JOIN users u ON w.name = u.name
 		WHERE u.id = $1
@@ -968,37 +996,7 @@ func (r *Repository) GetWorkerByUserId(userId int) (models.Worker, error) {
 	return worker, err
 }
 
-func (r *Repository) GetWorkerStatistics(workerId int) (models.WorkerStatistics, error) {
-	var stats models.WorkerStatistics
 
-	// Получаем общую статистику и последний заказ
-	err := r.db.Get(&stats, `
-		SELECT 
-			COUNT(*) as total_orders,
-			COALESCE(SUM(total_amount), 0) as total_revenue,
-			MAX(created_at) as last_order,
-			(SELECT COUNT(*) FROM orders 
-			 WHERE worker_id = $1 
-			 AND DATE(created_at) = CURRENT_DATE) as total_orders_today,
-			(SELECT COALESCE(SUM(total_amount), 0) FROM orders 
-			 WHERE worker_id = $1 
-			 AND DATE(created_at) = CURRENT_DATE) as total_revenue_today,
-			(SELECT COUNT(*) FROM orders 
-			 WHERE worker_id = $1 
-			 AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)) as total_orders_month,
-			(SELECT COALESCE(SUM(total_amount), 0) FROM orders 
-			 WHERE worker_id = $1 
-			 AND DATE_TRUNC('month', created_at) = DATE_TRUNC('month', CURRENT_DATE)) as total_revenue_month
-		FROM orders
-		WHERE worker_id = $1`, workerId)
-	if err != nil {
-		logger.Error("Ошибка при получении статистики работника: %v", err)
-		return models.WorkerStatistics{}, fmt.Errorf("ошибка при получении статистики: %w", err)
-	}
-
-	logger.Info("Статистика успешно получена для работника ID:%d", workerId)
-	return stats, nil
-}
 
 func (r *Repository) CarExists(number string) (bool, error) {
 	var exists bool
@@ -1013,4 +1011,146 @@ func (r *Repository) CarExists(number string) (bool, error) {
 
 	logger.Debug("Результат проверки существования автомобиля %s: %v", number, exists)
 	return exists, nil
+}
+
+func (r *Repository) AddPenalty(penalty models.PenaltyOrBonus) error {
+	query := `
+		INSERT INTO penalties (workerID, delta, description, order_id)
+		VALUES ($1, $2, $3, $4)
+	`
+	_, err := r.db.Exec(query, penalty.WorkerID, penalty.Amount, penalty.Desc, penalty.OrderID)
+	if err != nil {
+		logger.Error("Ошибка при добавлении штрафа: %v", err)
+		return fmt.Errorf("ошибка при добавлении штрафа: %w", err)
+	}
+
+	logger.Debug("Штраф успешно добавлен: %+v", penalty)
+	return nil
+}
+
+func (r *Repository) AddBonus(bonus models.PenaltyOrBonus) error {
+	query := `
+		INSERT INTO bonuses (workerID, delta, description, order_id)
+		VALUES ($1, $2, $3, $4)
+	`
+	_, err := r.db.Exec(query, bonus.WorkerID, bonus.Amount, bonus.Desc, bonus.OrderID)
+	if err != nil {
+		logger.Error("Ошибка при добавлении бонуса: %v", err)
+		return fmt.Errorf("ошибка при добавлении бонуса: %w", err)
+	}
+
+	logger.Debug("Бонус успешно добавлен: %+v", bonus)
+	return nil
+}
+
+func (r *Repository) GetPenalties(workerID int) ([]models.PenaltyOrBonus, error) {
+	var penalties []models.PenaltyOrBonus
+	query := `
+		SELECT id, workerID, delta, description, order_id, created_at
+		FROM penalties
+		WHERE workerID = $1`
+
+	logger.Debug("Получение списка штрафов работника: %d", workerID)
+	err := r.db.Select(&penalties, query, workerID)
+	if err != nil {
+		logger.Error("Ошибка при получении штрафов: %v", err)
+		return nil, fmt.Errorf("ошибка при получении штрафов: %w", err)
+	}
+
+	logger.Debug("Штрафы успешно получены: %d", len(penalties))
+	return penalties, nil
+}
+
+func (r *Repository) GetBonuses(workerID int) ([]models.PenaltyOrBonus, error) {
+	var bonuses []models.PenaltyOrBonus
+	query := `
+		SELECT id, workerID, delta, description, order_id, created_at
+		FROM bonuses
+		WHERE workerID = $1`
+
+	logger.Debug("Получение списка бонусов работника: %d", workerID)
+	err := r.db.Select(&bonuses, query, workerID)
+	if err != nil {
+		logger.Error("Ошибка при получении бонусов: %v", err)
+		return nil, fmt.Errorf("ошибка при получении бонусов: %w", err)
+	}
+
+	logger.Debug("Бонусы успешно получены: %d", len(bonuses))
+	return bonuses, nil
+}
+
+func (r *Repository) GetWorkerStatistic(workerID int, start, end time.Time) (models.WorkerStatistics, error) {
+	var stats models.WorkerStatistics
+
+	query := `
+		SELECT 
+			w.id AS worker_id,
+			w.name AS worker_name,
+			w.surname AS worker_surname,
+			w.phone AS worker_phone,
+			w.salary_schema AS salary_schema,
+			
+			-- Общее количество заказов
+			(SELECT COUNT(*) FROM orders WHERE worker_id = w.id AND created_at BETWEEN $2 AND $3) AS total_orders,
+			
+			-- Общая выручка по заказам
+			(SELECT COALESCE(SUM(total_amount), 0) FROM orders WHERE worker_id = w.id AND created_at BETWEEN $2 AND $3) AS total_revenue,
+			
+			-- Общая сумма бонусов
+			(SELECT COALESCE(SUM(delta), 0) FROM bonuses WHERE workerID = w.id AND created_at BETWEEN $2 AND $3) AS total_bonus,
+			
+			-- Общая сумма штрафов
+			(SELECT COALESCE(SUM(delta), 0) FROM penalties WHERE workerID = w.id AND created_at BETWEEN $2 AND $3) AS total_penalties,
+			
+			-- Финальная зарплата
+			(w.salary + 
+			 COALESCE((SELECT SUM(delta) FROM bonuses WHERE workerID = w.id AND created_at BETWEEN $2 AND $3), 0) -
+			 COALESCE((SELECT SUM(delta) FROM penalties WHERE workerID = w.id AND created_at BETWEEN $2 AND $3), 0)
+			) AS total_salary
+
+		FROM workers w
+		WHERE w.id = $1
+	`
+
+	err := r.db.Get(&stats, query, workerID, start, end)
+	if err != nil {
+		return stats, fmt.Errorf("failed to get worker statistics: %w", err)
+	}
+
+	return stats, nil
+}
+
+func (r *Repository) OnlineDate(date *models.OnlineDate) error {
+	query := `
+		INSERT INTO online_date (date, name, phone, car_number, client_desc, manager_desc, created_at, updated_at) 
+		VALUES ($1, $2, $3, $4, $5, $6, NOW(), NOW()) 
+		RETURNING id`
+	err := r.db.QueryRow(query, date.Date, date.Name, date.Phone, date.CarNumber, date.ClientDesc, date.ManagerDesc).Scan(&date.ID)
+	if err != nil {
+		logger.Error("Ошибка при добавлении онлайн записи: %v", err)
+		return err
+	}
+	logger.Debug("Создана онлайн запись с ID: %d", date.ID)
+	return nil
+}
+
+func (r *Repository) GetOnlineDate() ([]models.OnlineDate, error) {
+	var dates []models.OnlineDate
+	query := `SELECT * FROM online_date ORDER BY date ASC`
+	err := r.db.Select(&dates, query)
+	if err != nil {
+		logger.Error("Ошибка при получении даты онлайн:", err)
+		return nil, err
+	}
+	return dates, nil
+}
+
+func (r *Repository) UpdateOnlineDate(date models.OnlineDate) error {
+	query := `UPDATE online_date SET name = $1, phone = $2, car_number = $3, client_desc = $4, manager_desc = $5 WHERE id = $6`
+	_, err := r.db.Exec(query, date.Name, date.Phone, date.CarNumber, date.ClientDesc, date.ManagerDesc, date.ID)
+	if err != nil {
+		logger.Error("Ошибка при обновлении даты онлайн: %v", err)
+		return err
+	}
+	return nil
 }

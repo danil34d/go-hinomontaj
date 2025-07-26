@@ -20,6 +20,7 @@ WORKDIR /app
 COPY --from=builder /app/main .
 COPY --from=builder /app/configs ./configs
 COPY --from=builder /app/migrations ./migrations
+COPY --from=builder /app/static ./static
 
 # Добавляем зеркала репозиториев и устанавливаем утилиту migrate
 RUN echo "https://dl-cdn.alpinelinux.org/alpine/v3.19/main" > /etc/apk/repositories && \

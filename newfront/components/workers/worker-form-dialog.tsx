@@ -155,16 +155,25 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="tmp_salary">Зарплата</Label>
+            <Label htmlFor="tmp_salary">
+              {formData.salary_schema === "percentage" ? "Процент от продаж (%)" : "Зарплата (₽)"}
+            </Label>
             <Input
               id="tmp_salary"
               name="tmp_salary"
               type="number"
-              placeholder="Введите зарплату"
+              placeholder={formData.salary_schema === "percentage" ? "Введите процент (например: 15)" : "Введите зарплату"}
               value={formData.tmp_salary}
               onChange={handleChange}
               required
+              min="0"
+              max={formData.salary_schema === "percentage" ? "100" : undefined}
             />
+            <p className="text-sm text-muted-foreground">
+              {formData.salary_schema === "percentage" 
+                ? "Процент от общей суммы заказов сотрудника" 
+                : "Фиксированная сумма в рублях"}
+            </p>
           </div>
 
           <div className="flex items-center space-x-2">

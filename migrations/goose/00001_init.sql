@@ -17,20 +17,20 @@ CREATE TABLE IF NOT EXISTS workers (
     email VARCHAR(255) NOT NULL,
     phone VARCHAR(20) NOT NULL,
     salary_schema VARCHAR(20),
-    tmp_salary INTEGER NOT NULL,
+    salary INTEGER NOT NULL, -- переменная для расчета зарплаты(либо оклад либо процент, в зависимости от схемы зп)
     has_car BOOLEAN,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS onliene_date ( -- онлайн-запись
+CREATE TABLE IF NOT EXISTS online_date ( -- онлайн-запись
     id SERIAL PRIMARY KEY,
     date TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     name VARCHAR(255) NOT NULL,
     phone VARCHAR(15) NOT NULL,
     car_number VARCHAR(20) NOT NULL,
-    client_description TEXT,  -- заявка клиента(его просьбы итд)
-    manager_description TEXT, -- для пометок менеджера
+    client_desc TEXT,  -- заявка клиента(его просьбы итд)
+    manager_desc TEXT, -- для пометок менеджера
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -80,7 +80,7 @@ CREATE TABLE IF NOT EXISTS clients (
 
 CREATE TABLE IF NOT EXISTS cars (
     id SERIAL PRIMARY KEY,
-    number VARCHAR(20) NOT NULL UNIQUE,
+    number VARCHAR(20) NOT NULL UNIQUE CHECK (number ~ '^[A-Z0-9]+$'),
     model VARCHAR(255),
     year INTEGER,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
@@ -161,6 +161,25 @@ CREATE TABLE IF NOT EXISTS material_delivery ( -- поставка матери�
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
+CREATE TABLE IF NOT EXISTS bonuses(
+    id SERIAL PRIMARY KEY,
+    workerID INTEGER REFERENCES workers(id) ON DELETE CASCADE,
+    delta INTEGER NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    isOrder BOOLEAN DEFAULT false,
+    order_id INTEGER -- может быть null
+);
+
+CREATE TABLE IF NOT EXISTS penalties(
+    id SERIAL PRIMARY KEY,
+    workerID INTEGER REFERENCES workers(id) ON DELETE CASCADE,
+    delta INTEGER NOT NULL,
+    description TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    order_id INTEGER -- может быть null
+);
+
 -- Создаем индексы для оптимизации запросов
 CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
 CREATE INDEX IF NOT EXISTS idx_cars_number ON cars(number);
@@ -173,6 +192,27 @@ CREATE INDEX IF NOT EXISTS idx_orders_worker_id ON orders(worker_id);
 INSERT INTO storage ("Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15") 
 VALUES (0, 0, 0, 0, 0, 0, 0, 0, 0, 0) 
 ON CONFLICT DO NOTHING;
+
+-- Добавляем базовую материальную карту
+INSERT INTO material_card ("Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15") 
+VALUES (0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
+
+-- Добавляем базовый договор для налички
+INSERT INTO contracts (number, description, client_type, client_company_name, client_company_address, 
+                      client_company_phone, client_company_email, client_company_inn, 
+                      client_company_kpp, client_company_ogrn) 
+VALUES ('CASH-001', 'Договор для наличных расчетов', 'НАЛИЧКА', 'Наличные расчеты', 
+        'Не указан', '+7-000-000-0000', 'cash@example.com', '0000000000', 
+        '000000000', '0000000000000');
+
+-- Добавляем специальный сервис для дополнительных услуг (ID=1)
+INSERT INTO services (name, price, contract_id, material_card) 
+VALUES ('Дополнительная услуга', 0, 1, 1);
+
+-- Добавляем базового клиента для налички
+INSERT INTO clients (name, owner_phone, manager_phone, client_type, contract_id) 
+VALUES ('Наличка', '+7-000-000-0000', '+7-000-000-0000', 'НАЛИЧКА', 1);
+
 -- +goose StatementEnd
 
 -- +goose Down

@@ -41,6 +41,6 @@ func (s *OrderServiceImpl) Delete(id int) error {
 	return s.repo.DeleteOrder(id)
 }
 
-func (s *OrderServiceImpl) GetStatistics() (models.Statistics, error) {
-	return s.repo.GetOrderStatistics()
-}
+//func (s *OrderServiceImpl) GetStatistics() (models.Statistics, error) {
+//	return s.repo.GetOrderStatistics()
+//}
