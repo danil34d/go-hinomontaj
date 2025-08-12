@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import {
   Dialog,
@@ -19,7 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { contractsApi } from "@/lib/api"
+import { contractsApi, fetchWithAuth } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 
 interface ContractFormDialogProps {
@@ -48,6 +48,9 @@ export function ContractFormDialog({ open, onOpenChange, onSuccess }: ContractFo
     client_type: ""
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploading, setUploading] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement | null>(null)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const { toast } = useToast()
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -74,7 +77,16 @@ export function ContractFormDialog({ open, onOpenChange, onSuccess }: ContractFo
 
     try {
       setIsSubmitting(true)
-      await contractsApi.create(formData)
+      const res = await contractsApi.create(formData)
+      const createdId = res?.id
+      if (createdId && selectedFile) {
+        try {
+          await contractsApi.uploadPrices(createdId, selectedFile)
+          toast({ title: "Прайс загружен", description: "Цены добавлены к договору" })
+        } catch (e: any) {
+          toast({ variant: "destructive", title: "Ошибка загрузки прайса", description: e.message })
+        }
+      }
       toast({
         title: "Успешно",
         description: "Договор создан",
@@ -93,6 +105,7 @@ export function ContractFormDialog({ open, onOpenChange, onSuccess }: ContractFo
         client_company_ogrn: "",
         client_type: ""
       })
+      setSelectedFile(null)
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -102,6 +115,29 @@ export function ContractFormDialog({ open, onOpenChange, onSuccess }: ContractFo
     } finally {
       setIsSubmitting(false)
     }
+  }
+
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await fetchWithAuth("/api/manager/contracts/prices/template")
+      if (!res.ok) throw new Error("Не удалось скачать шаблон")
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "contract_prices_template.xlsx"
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Ошибка", description: e.message })
+    }
+  }
+
+  const handleUploadPrices = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    const file = files[0]
+    setSelectedFile(file)
   }
 
   return (
@@ -246,6 +282,15 @@ export function ContractFormDialog({ open, onOpenChange, onSuccess }: ContractFo
                 />
               </div>
             </div>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="text-lg font-medium">Прайс‑лист (необязательно)</h3>
+            <div className="flex gap-2">
+              <Button type="button" variant="outline" onClick={handleDownloadTemplate}>Скачать шаблон Excel</Button>
+              <Input ref={fileInputRef} type="file" accept=".xlsx,.xls" onChange={handleUploadPrices} disabled={uploading} />
+            </div>
+            <p className="text-sm text-muted-foreground">Загрузку прайса нужно выполнить после создания договора на странице договоров</p>
           </div>
 
           <div className="flex justify-end space-x-2 pt-4">

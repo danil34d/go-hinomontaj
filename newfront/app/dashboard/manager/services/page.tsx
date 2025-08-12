@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Service, ServiceWithPrices, servicesApi } from "@/lib/api"
+import { Contract, Service, ServiceWithPrices, contractsApi, servicesApi } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { ServiceFormDialog } from "@/components/services/service-form-dialog"
 import { ServiceEditDialog } from "@/components/services/service-edit-dialog"
@@ -27,6 +27,7 @@ import { ServicePriceEditDialog } from "@/components/services/service-price-edit
 
 export default function ServicesPage() {
   const [services, setServices] = useState<ServiceWithPrices[]>([])
+  const [contracts, setContracts] = useState<Contract[]>([])
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false)
   const [editingService, setEditingService] = useState<Service | null>(null)
   const [editingPriceService, setEditingPriceService] = useState<ServiceWithPrices | null>(null)
@@ -34,18 +35,21 @@ export default function ServicesPage() {
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
 
-  const fetchServices = async () => {
+  const fetchData = async () => {
     try {
       setIsLoading(true)
-      const data = await servicesApi.getAllWithPrices()
-      console.log("Полученные услуги с ценами:", data)
-      setServices(data || [])
+      const [servicesData, contractsData] = await Promise.all([
+        servicesApi.getAllWithPrices(),
+        contractsApi.getAll(),
+      ])
+      setServices(servicesData || [])
+      setContracts(contractsData || [])
     } catch (error: any) {
-      console.error("Ошибка при загрузке услуг:", error)
+      console.error("Ошибка при загрузке услуг или договоров:", error)
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error.message || "Не удалось загрузить услуги",
+        description: error.message || "Не удалось загрузить данные",
       })
     } finally {
       setIsLoading(false)
@@ -53,7 +57,7 @@ export default function ServicesPage() {
   }
 
   useEffect(() => {
-    fetchServices()
+    fetchData()
   }, [])
 
   const handleDelete = async (service: ServiceWithPrices) => {
@@ -66,7 +70,7 @@ export default function ServicesPage() {
         title: "Информация",
         description: "Удаление услуг с ценами по договорам пока не поддерживается",
       })
-      fetchServices()
+      fetchData()
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -76,30 +80,15 @@ export default function ServicesPage() {
     }
   }
 
-  // Безопасная фильтрация с проверкой на undefined
   const filteredServices = services.filter((service) => {
     if (!service || !service.name) return false
+    // Исключаем произвольную услугу
+    if (service.name === "Произвольная услуга") return false
     return service.name.toLowerCase().includes(searchQuery.toLowerCase())
   })
 
-  // Получаем уникальные договоры для заголовков таблицы
-  const getUniqueContracts = () => {
-    const contracts = new Map<number, string>()
-    services.forEach(service => {
-      if (service.prices) {
-        service.prices.forEach(price => {
-          if (price.contract_id && price.contract_name) {
-            contracts.set(price.contract_id, price.contract_name)
-          }
-        })
-      }
-    })
-    return Array.from(contracts.entries()).map(([id, name]) => ({ id, name }))
-  }
+  const uniqueContracts = contracts.map((c) => ({ id: c.id, name: c.number }))
 
-  const uniqueContracts = getUniqueContracts()
-
-  // Получаем цену услуги для конкретного договора
   const getServicePrice = (service: ServiceWithPrices, contractId: number) => {
     if (!service.prices) return "-"
     const price = service.prices.find(p => p.contract_id === contractId)
@@ -214,7 +203,7 @@ export default function ServicesPage() {
       <ServiceFormDialog
         open={isCreateDialogOpen}
         onOpenChange={setIsCreateDialogOpen}
-        onSuccess={fetchServices}
+        onSuccess={fetchData}
       />
 
       {editingService && (
@@ -222,7 +211,7 @@ export default function ServicesPage() {
           open={!!editingService}
           onOpenChange={(open) => !open && setEditingService(null)}
           service={editingService}
-          onSuccess={fetchServices}
+          onSuccess={fetchData}
         />
       )}
       
@@ -231,7 +220,7 @@ export default function ServicesPage() {
           open={!!editingPriceService}
           onOpenChange={(open) => !open && setEditingPriceService(null)}
           service={editingPriceService}
-          onSuccess={fetchServices}
+          onSuccess={fetchData}
         />
       )}
     </DashboardLayout>

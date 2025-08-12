@@ -37,6 +37,10 @@ func (s *OrderServiceImpl) Update(id int, order models.Order) error {
 	return s.repo.UpdateOrder(id, order)
 }
 
+func (s *OrderServiceImpl) UpdateStatus(id int, status string) error {
+	return s.repo.UpdateOrderStatus(id, status)
+}
+
 func (s *OrderServiceImpl) Delete(id int) error {
 	return s.repo.DeleteOrder(id)
 }

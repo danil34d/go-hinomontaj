@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Plus, Search, MoreHorizontal, Edit, Trash2 } from "lucide-react"
+import { useState, useEffect, useRef } from "react"
+import { Plus, Search, MoreHorizontal, Edit, Trash2, FileDown, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -19,7 +19,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { Contract, contractsApi } from "@/lib/api"
+import { Contract, contractsApi, fetchWithAuth } from "@/lib/api"
 import { useToast } from "@/hooks/use-toast"
 import { ContractFormDialog } from "@/components/contracts/contract-form-dialog"
 import { ContractEditDialog } from "@/components/contracts/contract-edit-dialog"
@@ -31,6 +31,7 @@ export default function ContractsPage() {
   const [searchQuery, setSearchQuery] = useState("")
   const [isLoading, setIsLoading] = useState(true)
   const { toast } = useToast()
+  const fileInputsRef = useRef<Record<number, HTMLInputElement | null>>({})
 
   const fetchContracts = async () => {
     try {
@@ -81,6 +82,41 @@ export default function ContractsPage() {
     contract.client_type.toLowerCase().includes(searchQuery.toLowerCase())
   )
 
+  const handleDownloadTemplate = async () => {
+    try {
+      const res = await fetchWithAuth("/api/manager/contracts/prices/template")
+      if (!res.ok) throw new Error("Не удалось скачать шаблон")
+      const blob = await res.blob()
+      const url = window.URL.createObjectURL(blob)
+      const a = document.createElement("a")
+      a.href = url
+      a.download = "contract_prices_template.xlsx"
+      a.click()
+      window.URL.revokeObjectURL(url)
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Ошибка", description: e.message })
+    }
+  }
+
+  const triggerUpload = (id: number) => {
+    const input = fileInputsRef.current[id]
+    if (input) input.click()
+  }
+
+  const handleFileChange = async (id: number, e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files
+    if (!files || files.length === 0) return
+    const file = files[0]
+    try {
+      await contractsApi.uploadPrices(id, file)
+      toast({ title: "Прайс загружен", description: `Цены добавлены к договору ${id}` })
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Ошибка загрузки прайса", description: error.message })
+    } finally {
+      e.target.value = ""
+    }
+  }
+
   if (isLoading) {
     return (
       <DashboardLayout>
@@ -103,10 +139,15 @@ export default function ContractsPage() {
       <div className="space-y-4">
         <div className="flex justify-between items-center">
           <h1 className="text-2xl font-bold">Договоры</h1>
-          <Button onClick={() => setIsCreateDialogOpen(true)}>
-            <Plus className="w-4 h-4 mr-2" />
-            Добавить договор
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={handleDownloadTemplate}>
+              <FileDown className="w-4 h-4 mr-2" /> Скачать шаблон Excel
+            </Button>
+            <Button onClick={() => setIsCreateDialogOpen(true)}>
+              <Plus className="w-4 h-4 mr-2" />
+              Добавить договор
+            </Button>
+          </div>
         </div>
 
         <div className="flex items-center space-x-2">
@@ -130,13 +171,14 @@ export default function ContractsPage() {
                 <TableHead>Компания</TableHead>
                 <TableHead>Тип клиента</TableHead>
                 <TableHead>Дата создания</TableHead>
+                <TableHead className="min-w-[260px]">Прайс-лист</TableHead>
                 <TableHead className="w-[100px]">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredContracts.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-8">
+                  <TableCell colSpan={7} className="text-center py-8">
                     Договоры не найдены
                   </TableCell>
                 </TableRow>
@@ -154,6 +196,23 @@ export default function ContractsPage() {
                     <TableCell>{contract.client_type}</TableCell>
                     <TableCell>
                       {new Date(contract.created_at).toLocaleDateString('ru-RU')}
+                    </TableCell>
+                    <TableCell>
+                      <div className="flex items-center gap-2">
+                        <Button size="sm" variant="outline" onClick={handleDownloadTemplate}>
+                          <FileDown className="w-4 h-4 mr-2" /> Шаблон Excel
+                        </Button>
+                        <input
+                          type="file"
+                          accept=".xlsx,.xls"
+                          className="hidden"
+                          ref={(el) => { fileInputsRef.current[contract.id] = el }}
+                          onChange={(e) => handleFileChange(contract.id, e)}
+                        />
+                        <Button size="sm" variant="default" onClick={() => triggerUpload(contract.id)}>
+                          <Upload className="w-4 h-4 mr-2" /> Загрузить Excel
+                        </Button>
+                      </div>
                     </TableCell>
                     <TableCell>
                       <DropdownMenu>

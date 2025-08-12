@@ -31,9 +31,8 @@ func (g *TestDataGenerator) GenerateTestData() error {
 	// Инициализируем генератор случайных чисел
 	rand.Seed(time.Now().UnixNano())
 
-	// 1. Сначала создаем материальные карты (нужны для услуг)
-	materialCardID, err := g.generateMaterialCards()
-	if err != nil {
+	// 1. Сначала создаем базовые материалы
+	if err := g.generateMaterials(); err != nil {
 		return err
 	}
 
@@ -44,7 +43,7 @@ func (g *TestDataGenerator) GenerateTestData() error {
 	}
 
 	// 3. Генерируем услуги для каждого договора
-	if err := g.generateServices(contractIDs, materialCardID); err != nil {
+	if err := g.generateServices(contractIDs); err != nil {
 		return err
 	}
 
@@ -137,18 +136,7 @@ func (g *TestDataGenerator) generateContracts() ([]int, error) {
 	logger.Info("Генерация договоров...")
 
 	contracts := []models.Contract{
-		{
-			Number:               "ДОГ-001-2024",
-			Description:          "Договор для наличных клиентов",
-			ClientType:           "НАЛИЧКА",
-			ClientCompanyName:    "Наличные клиенты",
-			ClientCompanyAddress: "Не указан",
-			ClientCompanyPhone:   "Не указан",
-			ClientCompanyEmail:   "cash@example.com",
-			ClientCompanyINN:     "0000000000",
-			ClientCompanyKPP:     "000000000",
-			ClientCompanyOGRN:    "0000000000000",
-		},
+		// Договор для налички уже создан в миграции (CASH-001), поэтому пропускаем его
 		{
 			Number:               "ДОГ-002-2024",
 			Description:          "Договор для контрагентов",
@@ -204,7 +192,7 @@ func (g *TestDataGenerator) generateContracts() ([]int, error) {
 // generateClients создает клиентов разных типов
 func (g *TestDataGenerator) generateClients(contractIDs []int) (map[string]int, error) {
 	logger.Info("Генерация клиентов...")
-	
+
 	clientIDs := make(map[string]int)
 
 	clients := []models.Client{
@@ -213,42 +201,42 @@ func (g *TestDataGenerator) generateClients(contractIDs []int) (map[string]int, 
 			ClientType:   "НАЛИЧКА",
 			OwnerPhone:   "+7 (000) 000-00-00",
 			ManagerPhone: "+7 (000) 000-00-00",
-			ContractID:   contractIDs[0], // Договор для налички
+			ContractID:   1, // Используем существующий договор CASH-001 из миграции
 		},
 		{
 			Name:         "ООО 'Автосервис Плюс'",
 			ClientType:   "КОНТРАГЕНТЫ",
 			OwnerPhone:   "+7 (495) 123-45-67",
 			ManagerPhone: "+7 (495) 123-45-68",
-			ContractID:   contractIDs[1], // Договор для контрагентов
+			ContractID:   contractIDs[0], // Договор для контрагентов
 		},
 		{
 			Name:         "Яндекс Такси",
 			ClientType:   "АГРЕГАТОРЫ",
 			OwnerPhone:   "+7 (495) 555-66-77",
 			ManagerPhone: "+7 (495) 555-66-78",
-			ContractID:   contractIDs[2], // Договор Яндекс Такси
+			ContractID:   contractIDs[1], // Договор Яндекс Такси
 		},
 		{
 			Name:         "ООО 'Грузоперевозки'",
 			ClientType:   "КОНТРАГЕНТЫ",
 			OwnerPhone:   "+7 (495) 777-88-99",
 			ManagerPhone: "+7 (495) 777-88-90",
-			ContractID:   contractIDs[1], // Договор для контрагентов
+			ContractID:   contractIDs[0], // Договор для контрагентов
 		},
 		{
 			Name:         "ИП Козлов В.В.",
 			ClientType:   "НАЛИЧКА",
 			OwnerPhone:   "+7 (999) 444-55-66",
 			ManagerPhone: "+7 (999) 444-55-66",
-			ContractID:   contractIDs[0], // Договор для налички
+			ContractID:   1, // Используем существующий договор CASH-001 из миграции
 		},
 		{
 			Name:         "Ситимобил",
 			ClientType:   "АГРЕГАТОРЫ",
 			OwnerPhone:   "+7 (495) 999-00-11",
 			ManagerPhone: "+7 (495) 999-00-12",
-			ContractID:   contractIDs[3], // Договор Ситимобил
+			ContractID:   contractIDs[2], // Договор Ситимобил
 		},
 	}
 
@@ -303,7 +291,7 @@ func (g *TestDataGenerator) addCarsToClient(clientID int, clientType string) err
 }
 
 // generateServices создает услуги для каждого договора
-func (g *TestDataGenerator) generateServices(contractIDs []int, materialCardID int) error {
+func (g *TestDataGenerator) generateServices(contractIDs []int) error {
 	logger.Info("Генерация услуг...")
 
 	// Базовые услуги с ценами для налички
@@ -322,63 +310,100 @@ func (g *TestDataGenerator) generateServices(contractIDs []int, materialCardID i
 		"Установка заплаты р19, р20, р23": 1300,
 		"Установка заплаты р25":           1800,
 		"Установка заплаты RS-25":         2300,
-		"Произвольная услуга":             0,
 	}
 
+	// Сначала создаем услуги для договора налички (CASH-001, ID=1)
+	logger.Info("Создание услуг для договора налички (CASH-001, ID=1)")
+	for name, price := range baseServices {
+		service := models.Service{
+			Name:       name,
+			Price:      price, // Полная цена для налички
+			ContractID: 1,     // ID договора CASH-001
+		}
+
+		_, err := g.services.Service.Create(service)
+		if err != nil {
+			logger.Error("Ошибка создания услуги %s для договора налички: %v", name, err)
+			return err
+		}
+	}
+	logger.Info("Создано %d услуг для договора налички (CASH-001)", len(baseServices))
+
 	// Коэффициенты скидки для разных типов договоров
-	discountMultipliers := []float64{1.0, 0.9, 0.85, 0.80} // наличка, контрагенты, Яндекс Такси, Ситимобил
+	discountMultipliers := []float64{0.9, 0.85, 0.80} // контрагенты, Яндекс Такси, Ситимобил
 
 	for i, contractID := range contractIDs {
 		multiplier := discountMultipliers[i%len(discountMultipliers)]
-		
+
 		for name, basePrice := range baseServices {
 			finalPrice := int(float64(basePrice) * multiplier)
-			
+
 			service := models.Service{
-				Name:           name,
-				Price:          finalPrice,
-				ContractID:     contractID,
-				MaterialCardId: materialCardID,
+				Name:       name,
+				Price:      finalPrice,
+				ContractID: contractID,
 			}
-			
+
 			_, err := g.services.Service.Create(service)
 			if err != nil {
 				logger.Error("Ошибка создания услуги %s для договора %d: %v", name, contractID, err)
 				return err
 			}
 		}
-		
+
 		logger.Info("Создано %d услуг для договора ID:%d (множитель цены: %.2f)", len(baseServices), contractID, multiplier)
 	}
 
 	return nil
 }
 
-// generateMaterialCards создает материальные карты
-func (g *TestDataGenerator) generateMaterialCards() (int, error) {
-	logger.Info("Генерация материальных карт...")
+// generateMaterials создает базовые материалы
+func (g *TestDataGenerator) generateMaterials() error {
+	logger.Info("Генерация базовых материалов...")
 
-	materialCard := models.MaterialCard{
-		Rs25:   100,
-		R19:    150,
-		R20:    120,
-		R25:    80,
-		R251:   60,
-		R13:    200,
-		R15:    180,
-		Foot9:  50,
-		Foot12: 40,
-		Foot15: 30,
+	materials := []models.Material{
+		{Name: "Резина 25", TypeDS: 1, Storage: 100},
+		{Name: "Резина 19", TypeDS: 1, Storage: 150},
+		{Name: "Резина 20", TypeDS: 1, Storage: 120},
+		{Name: "Резина 25.1", TypeDS: 1, Storage: 80},
+		{Name: "Резина 13", TypeDS: 1, Storage: 200},
+		{Name: "Резина 15", TypeDS: 1, Storage: 180},
+		{Name: "Колодки 9", TypeDS: 2, Storage: 50},
+		{Name: "Колодки 12", TypeDS: 2, Storage: 40},
+		{Name: "Колодки 15", TypeDS: 2, Storage: 30},
 	}
 
-	materialCardID, err := g.services.MaterialCard.Create(materialCard)
-	if err != nil {
-		logger.Error("Ошибка создания материальной карты: %v", err)
-		return 0, err
+	createdCount := 0
+	for _, material := range materials {
+		// Проверяем, существует ли уже материал с таким именем и типом
+		existingMaterials, err := g.services.Material.GetAll()
+		if err != nil {
+			logger.Error("Ошибка при получении существующих материалов: %v", err)
+			return err
+		}
+
+		// Проверяем, есть ли уже материал с таким именем
+		materialExists := false
+		for _, existing := range existingMaterials {
+			if existing.Name == material.Name && existing.TypeDS == material.TypeDS {
+				logger.Debug("Материал %s (тип ДС: %d) уже существует, пропускаем", material.Name, material.TypeDS)
+				materialExists = true
+				break
+			}
+		}
+
+		if !materialExists {
+			if err := g.services.Material.Create(material); err != nil {
+				logger.Error("Ошибка создания материала %s: %v", material.Name, err)
+				return err
+			}
+			createdCount++
+			logger.Debug("Создан материал: %s (тип ДС: %d)", material.Name, material.TypeDS)
+		}
 	}
 
-	logger.Info("Материальная карта успешно создана с ID: %d", materialCardID)
-	return materialCardID, nil
+	logger.Info("Материалы проверены, создано новых: %d", createdCount)
+	return nil
 }
 
 // createSharedCarForAggregators создает общую машину для двух агрегаторов
@@ -396,7 +421,7 @@ func (g *TestDataGenerator) createSharedCarForAggregators(clientIDs map[string]i
 
 	// Создаем общую машину
 	sharedCar := models.Car{
-		Number: "A777BB777", // Специальный номер для краевого случая (латинские буквы)
+		Number: "A777BB777",    // Специальный номер для краевого случая (латинские буквы)
 		Model:  "Toyota Prius", // Типичная машина для такси
 		Year:   2021,
 	}
@@ -416,9 +441,9 @@ func (g *TestDataGenerator) createSharedCarForAggregators(clientIDs map[string]i
 		return err
 	}
 
-	logger.Info("Создана общая машина %s для агрегаторов: Яндекс Такси (ID:%d) и Ситимобил (ID:%d)", 
+	logger.Info("Создана общая машина %s для агрегаторов: Яндекс Такси (ID:%d) и Ситимобил (ID:%d)",
 		sharedCar.Number, yandexID, citymobilID)
-	
+
 	return nil
 }
 

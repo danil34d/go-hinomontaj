@@ -34,8 +34,7 @@ interface ContractPrice {
 
 export function ServiceFormDialog({ open, onOpenChange, onSuccess }: ServiceFormDialogProps) {
   const [formData, setFormData] = useState({
-    name: "",
-    material_card_id: "1" // По умолчанию используем технологическую карту с ID 1
+    name: ""
   })
   const [contracts, setContracts] = useState<Contract[]>([])
   const [contractPrices, setContractPrices] = useState<ContractPrice[]>([])
@@ -128,7 +127,7 @@ export function ServiceFormDialog({ open, onOpenChange, onSuccess }: ServiceForm
       })
       onSuccess()
       onOpenChange(false)
-      setFormData({ name: "", material_card_id: "1" })
+      setFormData({ name: "" })
       setContractPrices([])
     } catch (error: any) {
       toast({
@@ -163,20 +162,7 @@ export function ServiceFormDialog({ open, onOpenChange, onSuccess }: ServiceForm
             />
           </div>
 
-          <div className="space-y-2">
-            <Label htmlFor="material_card_id">Технологическая карта</Label>
-            <Select
-              value={formData.material_card_id}
-              onValueChange={(value) => handleSelectChange("material_card_id", value)}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Выберите технологическую карту" />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="1">Технологическая карта #1</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
+
 
           <div className="space-y-4">
             <Label>Цены по договорам</Label>

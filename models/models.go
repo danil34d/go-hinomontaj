@@ -28,16 +28,16 @@ type SignUpInput struct {
 }
 
 type Client struct {
-	ID         int            `json:"id" db:"id"`
-	Name       string         `json:"name" db:"name"`
-	ClientType string         `json:"client_type" db:"client_type"` // если == имени то цены индивидуальные
-	Cars       []Car          `json:"cars"`
-	OwnerPhone string         `json:"owner_phone" db:"owner_phone"`
+	ID           int            `json:"id" db:"id"`
+	Name         string         `json:"name" db:"name"`
+	ClientType   string         `json:"client_type" db:"client_type"` // если == имени то цены индивидуальные
+	Cars         []Car          `json:"cars"`
+	OwnerPhone   string         `json:"owner_phone" db:"owner_phone"`
 	ManagerPhone string         `json:"manager_phone" db:"manager_phone"`
-	ContractID int            `json:"contract_id" db:"contract_id"`
-	CarNumbers pq.StringArray `json:"car_numbers" db:"car_numbers"`
-	CreatedAt  time.Time      `json:"created_at" db:"created_at"`
-	UpdatedAt  time.Time      `json:"updated_at" db:"updated_at"`
+	ContractID   int            `json:"contract_id" db:"contract_id"`
+	CarNumbers   pq.StringArray `json:"car_numbers" db:"car_numbers"`
+	CreatedAt    time.Time      `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time      `json:"updated_at" db:"updated_at"`
 }
 
 type ClientsCars struct {
@@ -56,6 +56,7 @@ type Car struct {
 
 type Order struct {
 	ID            int            `json:"id" db:"id"`
+	Status        string         `json:"status" db:"status"`
 	WorkerID      int            `json:"worker_id" db:"worker_id"`
 	ClientID      int            `json:"client_id" db:"client_id"`
 	Client        *Client        `json:"client" db:"-"`
@@ -66,6 +67,15 @@ type Order struct {
 	UpdatedAt     time.Time      `json:"updated_at" db:"updated_at"`
 	Services      []OrderService `json:"services"`
 }
+
+// OrderStatus представляет статус заказа
+type OrderStatus string
+
+const (
+	OrderStatusPlanned    OrderStatus = "запланирован"
+	OrderStatusInProgress OrderStatus = "выполняется"
+	OrderStatusCompleted  OrderStatus = "выполнен"
+)
 
 // связующая таблица для бд
 type OrderService struct {
@@ -81,54 +91,51 @@ type OrderService struct {
 
 // Услуга и её прайс для определённого типа клиента
 type Service struct {
-	ID             int       `json:"id" db:"id"`
-	Name           string    `json:"name" db:"name"`
-	Price          int       `json:"price" db:"price"`
-	ContractID     int       `json:"contract_id" db:"contract_id"`
-	MaterialCardId int       `json:"material_card" db:"material_card"`
-	CreatedAt      time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt      time.Time `json:"updated_at" db:"updated_at"`
+	ID         int       `json:"id" db:"id"`
+	Name       string    `json:"name" db:"name"`
+	Price      int       `json:"price" db:"price"`
+	ContractID int       `json:"contract_id" db:"contract_id"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 }
 
-type Compare struct{
+type Compare struct {
 	CompanyName string
 	ServiceName string
-	Price int
+	Price       int
 }
 
 // Contract представляет договор с клиентом
 type Contract struct {
-	ID         int       `json:"id" db:"id"`
-	Number     string    `json:"number" db:"number"`
-	Description string    `json:"description" db:"description"`
-	
-	ClientCompanyName string    `json:"client_company_name" db:"client_company_name"`
-	ClientCompanyAddress string    `json:"client_company_address" db:"client_company_address"`
-	ClientCompanyPhone string    `json:"client_company_phone" db:"client_company_phone"`
-	ClientCompanyEmail string    `json:"client_company_email" db:"client_company_email"`
-	ClientCompanyINN string    `json:"client_company_inn" db:"client_company_inn"`
-	ClientCompanyKPP string    `json:"client_company_kpp" db:"client_company_kpp"`
-	ClientCompanyOGRN string    `json:"client_company_ogrn" db:"client_company_ogrn"`
-	
+	ID          int    `json:"id" db:"id"`
+	Number      string `json:"number" db:"number"`
+	Description string `json:"description" db:"description"`
+
+	ClientCompanyName    string `json:"client_company_name" db:"client_company_name"`
+	ClientCompanyAddress string `json:"client_company_address" db:"client_company_address"`
+	ClientCompanyPhone   string `json:"client_company_phone" db:"client_company_phone"`
+	ClientCompanyEmail   string `json:"client_company_email" db:"client_company_email"`
+	ClientCompanyINN     string `json:"client_company_inn" db:"client_company_inn"`
+	ClientCompanyKPP     string `json:"client_company_kpp" db:"client_company_kpp"`
+	ClientCompanyOGRN    string `json:"client_company_ogrn" db:"client_company_ogrn"`
+
 	ClientType string    `json:"client_type" db:"client_type"`
 	CreatedAt  time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
 }
 
 type ServicePrice struct {
-	ID         int       `json:"id" db:"id"`
-	ContractID int       `json:"contract_id" db:"contract_id"`
-	ContractName string    `json:"contract_name" db:"contract_name"`
-	ServiceName  string    `json:"service_name" db:"service_name"`
-	MaterialCardID int       `json:"material_card_id" db:"material_card_id"`
-	Price      int       `json:"price" db:"price"`
+	ID           int    `json:"id" db:"id"`
+	ContractID   int    `json:"contract_id" db:"contract_id"`
+	ContractName string `json:"contract_name" db:"contract_name"`
+	ServiceName  string `json:"service_name" db:"service_name"`
+	Price        int    `json:"price" db:"price"`
 }
 
 // ServiceWithPrices представляет услугу с ценами по всем договорам
 type ServiceWithPrices struct {
-	Name         string    `json:"name"`
-	MaterialCard int       `json:"material_card"`
-	Prices       []struct {
+	Name   string `json:"name"`
+	Prices []struct {
 		ContractID   int    `json:"contract_id"`
 		ContractName string `json:"contract_name"`
 		Price        int    `json:"price"`
@@ -137,51 +144,19 @@ type ServiceWithPrices struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-type MaterialCard struct {
-	ID         int       `json:"id" db:"id"`
-	Rs25       int       `json:"rs25" db:"Rs25"`
-	R19        int       `json:"r19" db:"R19"`
-	R20        int       `json:"r20" db:"R20"`
-	R25        int       `json:"r25" db:"R25"`
-	R251       int       `json:"r251" db:"R251"`
-	R13        int       `json:"r13" db:"R13"`
-	R15        int       `json:"r15" db:"R15"`
-	Foot9      int       `json:"foot9" db:"Foot9"`
-	Foot12     int       `json:"foot12" db:"Foot12"`
-	Foot15     int       `json:"foot15" db:"Foot15"`
-	CreatedAt  time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
-}
-
-type Storage struct {
-	ID         int       `json:"id" db:"id"`
-	Rs25       int       `json:"rs25" db:"Rs25"`
-	R19        int       `json:"r19" db:"R19"`
-	R20        int       `json:"r20" db:"R20"`
-	R25        int       `json:"r25" db:"R25"`
-	R251       int       `json:"r251" db:"R251"`
-	R13        int       `json:"r13" db:"R13"`
-	R15        int       `json:"r15" db:"R15"`
-	Foot9      int       `json:"foot9" db:"Foot9"`
-	Foot12     int       `json:"foot12" db:"Foot12"`
-	Foot15     int       `json:"foot15" db:"Foot15"`
-	CreatedAt  time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt  time.Time `json:"updated_at" db:"updated_at"`
-}
-
 type Worker struct {
-	ID        int       `json:"id" db:"id"`
-	Name      string    `json:"name" db:"name"`
-	Surname   string    `json:"surname" db:"surname"`
-	Email     string    `json:"email" db:"email"`
-	Phone     string    `json:"phone" db:"phone"`
-	SalarySchema string `json:"salary_schema" db:"salary_schema"`
-	Salary       int    `json:"salary" db:"salary"`
-	HasCar       bool   `json:"has_car" db:"has_car"`
-	CreatedAt time.Time `json:"created_at" db:"created_at"`
-	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
-	Password  string    `json:"password" db:"-"`
-	Role      string    `json:"role" db:"-"`
+	ID           int       `json:"id" db:"id"`
+	Name         string    `json:"name" db:"name"`
+	Surname      string    `json:"surname" db:"surname"`
+	Email        string    `json:"email" db:"email"`
+	Phone        string    `json:"phone" db:"phone"`
+	SalarySchema string    `json:"salary_schema" db:"salary_schema"`
+	Salary       int       `json:"salary" db:"salary"`
+	HasCar       bool      `json:"has_car" db:"has_car"`
+	CreatedAt    time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
+	Password     string    `json:"password" db:"-"`
+	Role         string    `json:"role" db:"-"`
 }
 
 type Statistics struct {
@@ -207,22 +182,31 @@ type WorkerStatistics struct {
 }
 
 type PenaltyOrBonus struct {
-	ID         int       `json:"id" db:"id"`
-	WorkerID   int       `json:"worker_id" db:"workerID"`
-	Desc       string    `json:"description" db:"description"`
-	Amount     int       `json:"delta" db:"delta"`
-	OrderID    int       `json:"order_id" db:"order_id"`
-	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	ID        int       `json:"id" db:"id"`
+	WorkerID  int       `json:"worker_id" db:"workerID"`
+	Desc      string    `json:"description" db:"description"`
+	Amount    int       `json:"delta" db:"delta"`
+	OrderID   int       `json:"order_id" db:"order_id"`
+	CreatedAt time.Time `json:"created_at" db:"created_at"`
 }
 
 type OnlineDate struct {
-	ID         int       `json:"id" db:"id"`
-	Date		time.Time `json:"date" db:"date"`
-	Name 		string `json:"name" db:"name"`
-	Phone 		string `json:"phone" db:"phone"`
-	CarNumber	string `json:"car_number" db:"car_number"`
-	ClientDesc string `json:"client_desc" db:"client_desc"`
-	ManagerDesc string `json:"manager_desc" db:"manager_desc"`
+	ID          int       `json:"id" db:"id"`
+	Date        time.Time `json:"date" db:"date"`
+	Name        string    `json:"name" db:"name"`
+	Phone       string    `json:"phone" db:"phone"`
+	CarNumber   string    `json:"car_number" db:"car_number"`
+	ClientDesc  string    `json:"client_desc" db:"client_desc"`
+	ManagerDesc string    `json:"manager_desc" db:"manager_desc"`
+	CreatedAt   time.Time `json:"created_at" db:"created_at"`
+	UpdatedAt   time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type Material struct {
+	ID        int       `json:"id" db:"id"`
+	Name      string    `json:"name" db:"name"`
+	TypeDS    int       `json:"type_ds" db:"type_ds"`
+	Storage   int       `json:"storage" db:"storage"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
 }

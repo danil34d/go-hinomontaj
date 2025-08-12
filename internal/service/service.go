@@ -14,13 +14,13 @@ type DBConfig struct {
 }
 
 type Services struct {
-	Auth         Auth
-	Worker       Worker
-	Client       Client
-	Order        Order
-	Service      Service
-	Contract     Contract
-	MaterialCard MaterialCard
+	Auth     Auth
+	Worker   Worker
+	Client   Client
+	Order    Order
+	Service  Service
+	Contract Contract
+	Material Material
 }
 
 type ServicesConfig struct {
@@ -30,13 +30,13 @@ type ServicesConfig struct {
 
 func NewServices(cfg ServicesConfig) *Services {
 	return &Services{
-		Auth:         NewAuthService(cfg.Repository, cfg.SigningKey),
-		Worker:       NewWorkerService(cfg.Repository),
-		Client:       NewClientService(cfg.Repository),
-		Order:        NewOrderService(cfg.Repository),
-		Service:      NewServiceService(cfg.Repository),
-		Contract:     NewContractService(cfg.Repository),
-		MaterialCard: NewMaterialCardService(cfg.Repository),
+		Auth:     NewAuthService(cfg.Repository, cfg.SigningKey),
+		Worker:   NewWorkerService(cfg.Repository),
+		Client:   NewClientService(cfg.Repository),
+		Order:    NewOrderService(cfg.Repository),
+		Service:  NewServiceService(cfg.Repository),
+		Contract: NewContractService(cfg.Repository),
+		Material: NewMaterialService(cfg.Repository),
 	}
 }
 
@@ -84,6 +84,7 @@ type Order interface {
 	GetAll() ([]models.Order, error)
 	GetByWorkerId(workerId int) ([]models.Order, error)
 	Update(id int, order models.Order) error
+	UpdateStatus(id int, status string) error
 	Delete(id int) error
 }
 
@@ -101,15 +102,18 @@ type Contract interface {
 	GetAll() ([]models.Contract, error)
 	Update(id int, contract models.Contract) error
 	Delete(id int) error
+	AddServicesToContract(contractID int, services []models.Service) error
 }
 
-type MaterialCard interface {
-	Create(materialCard models.MaterialCard) (int, error)
-	GetAll() ([]models.MaterialCard, error)
-	Update(id int, materialCard models.MaterialCard) error
+type Material interface {
+	Create(material models.Material) error
+	GetAll() ([]models.Material, error)
+	GetById(id int) (models.Material, error)
+	GetByNameAndType(name string, typeDS int) (models.Material, error)
+	Update(id int, material models.Material) error
 	Delete(id int) error
-	GetStorage() (models.Storage, error)
-	AddDelivery(delivery models.Storage) error
+	AddQuantity(id int, quantity int) error
+	SubtractQuantity(id int, quantity int) error
 }
 
 type Repository interface {
@@ -152,20 +156,24 @@ type Repository interface {
 	GetAllContracts() ([]models.Contract, error)
 	UpdateContract(id int, contract models.Contract) error
 	DeleteContract(id int) error
+	AddServicesToContract(contractID int, services []models.Service) error
 
-	// MaterialCards
-	CreateMaterialCard(materialCard models.MaterialCard) (int, error)
-	GetAllMaterialCards() ([]models.MaterialCard, error)
-	UpdateMaterialCard(id int, materialCard models.MaterialCard) error
-	DeleteMaterialCard(id int) error
-	GetStorage() (models.Storage, error)
-	AddDelivery(delivery models.Storage) error
+	// Materials
+	AddMaterial(material models.Material) error
+	GetAllMaterials() ([]models.Material, error)
+	GetMaterialById(id int) (models.Material, error)
+	GetMaterialByNameAndType(name string, typeDS int) (models.Material, error)
+	UpdateMaterial(id int, material models.Material) error
+	DeleteMaterial(id int) error
+	AddMaterialQuantity(id int, quantity int) error
+	SubtractMaterialQuantity(id int, quantity int) error
 
 	// Orders
 	CreateOrder(order models.Order) (int, error)
 	GetAllOrders() ([]models.Order, error)
 	GetOrdersByWorkerId(workerId int) ([]models.Order, error)
 	UpdateOrder(id int, order models.Order) error
+	UpdateOrderStatus(id int, status string) error
 	DeleteOrder(id int) error
 
 	// OnlineDate

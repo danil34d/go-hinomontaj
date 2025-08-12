@@ -103,7 +103,16 @@ export const ordersApi = {
   },
 
   // Создать заказ (для менеджера)
-  createManager: async (data: Omit<Order, "id" | "created_at" | "updated_at">) => {
+  createManager: async (data: {
+    client_id: number | null
+    worker_id: number
+    vehicle_number: string
+    payment_method: string
+    description: string
+    total_amount: number
+    status: string
+    services: CreateOrderService[]
+  }) => {
     const response = await fetchWithAuth("/api/manager/orders", {
       method: "POST",
       headers: {
@@ -116,6 +125,7 @@ export const ordersApi = {
         payment_method: data.payment_method,
         description: data.description,
         total_amount: data.total_amount,
+        status: data.status,
         services: data.services,
       }),
     })
@@ -153,6 +163,22 @@ export const ordersApi = {
       const error = await response.json()
       throw new Error(error.error || "Не удалось удалить заказ")
     }
+  },
+
+  // Обновить статус заказа
+  updateStatus: async (id: number, status: string) => {
+    const response = await fetchWithAuth(`/api/manager/orders/${id}/status`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ status }),
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось обновить статус заказа")
+    }
+    return response.json()
   },
 }
 
@@ -558,24 +584,38 @@ export const contractsApi = {
     }
     return response.json();
   },
+
+  uploadPrices: async (contractId: number, file: File): Promise<any> => {
+    const form = new FormData()
+    form.append('file', file)
+    const response = await fetchWithAuth(`/api/manager/contracts/${contractId}/prices/upload`, {
+      method: 'POST',
+      body: form,
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось загрузить прайс-лист')
+    }
+    return response.json()
+  },
 }
 
 // API для работы с материалами (для менеджера)
 export const materialsApi = {
-  // Получить все технологические карты
-  getAllMaterialCards: async (): Promise<MaterialCard[]> => {
-    const response = await fetchWithAuth("/api/manager/material-cards")
+  // Получить все материалы
+  getAll: async (): Promise<Material[]> => {
+    const response = await fetchWithAuth("/api/manager/materials")
     if (!response.ok) {
       const error = await response.json()
-      throw new Error(error.error || "Не удалось получить список технологических карт")
+      throw new Error(error.error || "Не удалось получить список материалов")
     }
     const data = await response.json()
     return Array.isArray(data) ? data : []
   },
 
-  // Создать технологическую карту
-  createMaterialCard: async (data: Omit<MaterialCard, "id" | "created_at" | "updated_at">): Promise<{ id: number }> => {
-    const response = await fetchWithAuth("/api/manager/material-cards", {
+  // Создать материал
+  create: async (data: Omit<Material, "id" | "created_at" | "updated_at">): Promise<any> => {
+    const response = await fetchWithAuth("/api/manager/materials", {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -584,14 +624,14 @@ export const materialsApi = {
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Не удалось создать технологическую карту');
+      throw new Error(error.error || 'Не удалось создать материал');
     }
     return response.json();
   },
 
-  // Обновить технологическую карту
-  updateMaterialCard: async (id: number, data: Omit<MaterialCard, "id" | "created_at" | "updated_at">): Promise<any> => {
-    const response = await fetchWithAuth(`/api/manager/material-cards/${id}`, {
+  // Обновить материал
+  update: async (id: number, data: Omit<Material, "id" | "created_at" | "updated_at">): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/materials/${id}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -600,49 +640,154 @@ export const materialsApi = {
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Не удалось обновить технологическую карту');
+      throw new Error(error.error || 'Не удалось обновить материал');
     }
     return response.json();
   },
 
-  // Удалить технологическую карту
-  deleteMaterialCard: async (id: number): Promise<any> => {
-    const response = await fetchWithAuth(`/api/manager/material-cards/${id}`, {
+  // Удалить материал
+  delete: async (id: number): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/materials/${id}`, {
       method: 'DELETE',
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Не удалось удалить технологическую карту');
+      throw new Error(error.error || 'Не удалось удалить материал');
     }
     return response.json();
   },
 
-  // Получить данные склада
-  getStorage: async (): Promise<Storage> => {
-    const response = await fetchWithAuth("/api/manager/material-cards/storage")
-    if (!response.ok) {
-      const error = await response.json()
-      throw new Error(error.error || "Не удалось получить данные склада")
-    }
-    return response.json()
-  },
-
-  // Добавить поставку материалов
-  addDelivery: async (data: Omit<Storage, "id" | "created_at" | "updated_at">): Promise<any> => {
-    const response = await fetchWithAuth("/api/manager/material-cards/delivery", {
+  // Добавить количество материала
+  addQuantity: async (id: number, quantity: number): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/materials/${id}/add-quantity`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(data),
+      body: JSON.stringify({ quantity }),
     });
     if (!response.ok) {
       const error = await response.json();
-      throw new Error(error.error || 'Не удалось добавить поставку');
+      throw new Error(error.error || 'Не удалось добавить количество');
     }
     return response.json();
   },
-}
+
+  // Вычесть количество материала
+  subtractQuantity: async (id: number, quantity: number): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/materials/${id}/subtract-quantity`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ quantity }),
+    });
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Не удалось вычесть количество');
+    }
+    return response.json();
+  },
+
+  dropConsumable: async (name: string): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/material-cards/schema/columns/${name}`, {
+      method: 'DELETE',
+    })
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Не удалось удалить расходник');
+    }
+    return response.json();
+  },
+
+  renameConsumable: async (oldName: string, newName: string): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/material-cards/schema/columns/rename`, {
+      method: 'PUT',
+      body: JSON.stringify({ old_name: oldName, new_name: newName }),
+    })
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.error || 'Не удалось переименовать расходник');
+    }
+    return response.json();
+  },
+  getConsumableColumns: async (): Promise<string[]> => {
+    const response = await fetchWithAuth('/api/manager/material-cards/schema/columns')
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось получить список расходников')
+    }
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
+
+  // Управление складом
+  getStorage: async (): Promise<Storage> => {
+    const response = await fetchWithAuth('/api/manager/storage')
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось получить данные склада')
+    }
+    return response.json()
+  },
+  updateStorage: async (storage: any): Promise<any> => {
+    const response = await fetchWithAuth('/api/manager/storage', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(storage)
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось обновить склад')
+    }
+    return response.json()
+  },
+  addStorageColumn: async (name: string): Promise<any> => {
+    const response = await fetchWithAuth('/api/manager/storage/columns', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось добавить колонку склада')
+    }
+    return response.json()
+  },
+  dropStorageColumn: async (name: string): Promise<any> => {
+    const response = await fetchWithAuth(`/api/manager/storage/columns/${name}`, {
+      method: 'DELETE'
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось удалить колонку склада')
+    }
+    return response.json()
+  },
+  renameStorageColumn: async (oldName: string, newName: string): Promise<any> => {
+    const response = await fetchWithAuth('/api/manager/storage/columns/rename', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ old_name: oldName, new_name: newName })
+    })
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось переименовать колонку склада')
+    }
+    return response.json()
+  },
+  getStorageColumns: async (): Promise<string[]> => {
+    const response = await fetchWithAuth('/api/manager/storage/columns')
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || 'Не удалось получить колонки склада')
+    }
+    const data = await response.json()
+    return Array.isArray(data) ? data : []
+  },
+};
+
+
 
 // Типы для API
 export interface Client {
@@ -672,7 +817,6 @@ export interface Service {
   name: string
   price: number
   contract_id: number
-  material_card: number
   created_at: string
   updated_at: string
 }
@@ -724,40 +868,18 @@ export interface Worker {
   updated_at: string
 }
 
-export interface MaterialCard {
+export interface Material {
   id: number
-  rs25: number
-  r19: number
-  r20: number
-  r25: number
-  r251: number
-  r13: number
-  r15: number
-  foot9: number
-  foot12: number
-  foot15: number
-  created_at: string
-  updated_at: string
-}
-
-export interface Storage {
-  id: number
-  rs25: number
-  r19: number
-  r20: number
-  r25: number
-  r251: number
-  r13: number
-  r15: number
-  foot9: number
-  foot12: number
-  foot15: number
+  name: string
+  type_ds: number
+  storage: number
   created_at: string
   updated_at: string
 }
 
 export interface Order {
   id: number
+  status: string
   worker_id: number
   client_id: number
   client?: Client
@@ -778,6 +900,13 @@ export interface OrderService {
   price: number
   created_at: string
   updated_at: string
+}
+
+export interface CreateOrderService {
+  service_id: number
+  description: string
+  wheel_position: string
+  price: number
 }
 
 export interface OnlineDate {

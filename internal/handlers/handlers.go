@@ -7,10 +7,12 @@ import (
 	"go-hinomontaj/pkg/logger"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/gin-contrib/cors"
 	"github.com/gin-gonic/gin"
+	"github.com/xuri/excelize/v2"
 )
 
 // Handler struct для работы с сервисом
@@ -55,7 +57,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	router.Static("/static", "./static")
 
 	api := router.Group("/api")
-	
+
 	// Роут для онлайн записи (без аутентификации)
 	api.POST("/date", h.Date)
 
@@ -71,6 +73,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	api.GET("/services/:id/prices", h.GetServicePricesByContract)
 	api.GET("/client-types", h.clientTypes)
 	api.GET("/clients", h.GetClient)
+	api.GET("/materials", h.GetMaterials)
 
 	worker := api.Group("/worker")
 	worker.Use(h.workerRoleMiddleware)
@@ -88,6 +91,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			orders.GET("", h.GetOrders)
 			orders.POST("", h.CreateOrder)
 			orders.PUT("/:id", h.UpdateOrder)
+			orders.PUT("/:id/status", h.UpdateOrderStatus)
 			orders.DELETE("/:id", h.DeleteOrder)
 		}
 		manager.GET("/statistics", h.GetOrderStatistics)
@@ -107,9 +111,9 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			clients.GET("/whoose/:car", h.WhooseCar)
 			clients.GET("/compare/:car", h.CompareClientsForCar)
 
-			clients.GET("/onlinedate", h.GetOnlineDate) // получить все онлайн встречи
+			clients.GET("/onlinedate", h.GetOnlineDate)     // получить все онлайн встречи
 			clients.POST("/onlinedate", h.CreateOnlineDate) // создать новую онлайн встречу
-			clients.PUT("/onlinedate", h.UpdateOnlineDate) // отредактировать встречу, например чтобы написать заметку
+			clients.PUT("/onlinedate", h.UpdateOnlineDate)  // отредактировать встречу, например чтобы написать заметку
 		}
 
 		// Управление сотрудниками
@@ -147,17 +151,20 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			contracts.GET("/:id", h.GetContract)
 			contracts.PUT("/:id", h.UpdateContract)
 			contracts.DELETE("/:id", h.DeleteContract)
+			// Прайс-листы договоров (Excel/CSV)
+			contracts.GET("/prices/template", h.GetContractPricesTemplate)
+			contracts.POST("/:id/prices/upload", h.UploadContractPrices)
 		}
 
 		// Управление материалами
-		materialCards := manager.Group("/material-cards")
+		materials := manager.Group("/materials")
 		{
-			materialCards.GET("", h.GetMaterialCards)
-			materialCards.POST("", h.CreateMaterialCard)
-			materialCards.PUT("/:id", h.UpdateMaterialCard)
-			materialCards.DELETE("/:id", h.DeleteMaterialCard)
-			materialCards.GET("/storage", h.GetStorage)
-			materialCards.POST("/delivery", h.AddDelivery)
+			materials.GET("", h.GetMaterials)
+			materials.POST("", h.CreateMaterial)
+			materials.PUT("/:id", h.UpdateMaterial)
+			materials.DELETE("/:id", h.DeleteMaterial)
+			materials.POST("/:id/add-quantity", h.AddMaterialQuantity)
+			materials.POST("/:id/subtract-quantity", h.SubtractMaterialQuantity)
 		}
 
 	}
@@ -281,8 +288,6 @@ func (h *Handler) CreateOrder(c *gin.Context) {
 		return
 	}
 
-
-
 	// Валидация обязательных полей
 	if input.ClientID == 0 {
 		logger.Warning("Не указан ID клиента")
@@ -375,6 +380,35 @@ func (h *Handler) UpdateOrder(c *gin.Context) {
 
 	logger.Info("Успешно обновлен заказ ID:%d", id)
 	c.JSON(http.StatusOK, gin.H{"status": "успешно обновлено"})
+}
+
+func (h *Handler) UpdateOrderStatus(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID заказа при обновлении статуса: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	var input struct {
+		Status string `json:"status"`
+	}
+
+	if err := c.BindJSON(&input); err != nil {
+		logger.Error("Ошибка при разборе JSON: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	logger.Debug("Получен запрос на обновление статуса заказа ID:%d на %s", id, input.Status)
+	if err := h.services.Order.UpdateStatus(id, input.Status); err != nil {
+		logger.Error("Ошибка при обновлении статуса заказа ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	logger.Info("Успешно обновлен статус заказа ID:%d на %s", id, input.Status)
+	c.JSON(http.StatusOK, gin.H{"status": "статус успешно обновлен"})
 }
 
 func (h *Handler) DeleteOrder(c *gin.Context) {
@@ -591,10 +625,9 @@ func (h *Handler) CreateService(c *gin.Context) {
 	}
 
 	service := models.Service{
-		Name:           input.Name,
-		Price:          input.Price,
-		ContractID:     input.ContractId,
-		MaterialCardId: input.MaterialCardId,
+		Name:       input.Name,
+		Price:      input.Price,
+		ContractID: input.ContractId,
 	}
 
 	id, err := h.services.Service.Create(service)
@@ -618,10 +651,9 @@ func (h *Handler) UpdateService(c *gin.Context) {
 
 	logger.Debug("Получен запрос на обновление услуги ID:%d", id)
 	var input struct {
-		Name           string `json:"name"`
-		Price          int    `json:"price"`
-		ContractId     int    `json:"contract_id"`
-		MaterialCardId int    `json:"material_card_id"`
+		Name       string `json:"name"`
+		Price      int    `json:"price"`
+		ContractId int    `json:"contract_id"`
 	}
 
 	if err := c.BindJSON(&input); err != nil {
@@ -631,10 +663,9 @@ func (h *Handler) UpdateService(c *gin.Context) {
 	}
 
 	service := models.Service{
-		Name:           input.Name,
-		Price:          input.Price,
-		ContractID:     input.ContractId,
-		MaterialCardId: input.MaterialCardId,
+		Name:       input.Name,
+		Price:      input.Price,
+		ContractID: input.ContractId,
 	}
 
 	if err := h.services.Service.Update(id, service); err != nil {
@@ -1002,39 +1033,38 @@ func (h *Handler) DeleteContract(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
 }
 
-func (h *Handler) GetMaterialCards(c *gin.Context) {
+func (h *Handler) GetMaterials(c *gin.Context) {
 	logger.Debug("Получен запрос на получение списка материалов")
-	materialCards, err := h.services.MaterialCard.GetAll()
+	materials, err := h.services.Material.GetAll()
 	if err != nil {
 		logger.Error("Ошибка при получении списка материалов: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	logger.Debug("Успешно получено %d материалов", len(materialCards))
-	c.JSON(http.StatusOK, materialCards)
+	logger.Debug("Успешно получено %d материалов", len(materials))
+	c.JSON(http.StatusOK, materials)
 }
 
-func (h *Handler) CreateMaterialCard(c *gin.Context) {
+func (h *Handler) CreateMaterial(c *gin.Context) {
 	logger.Debug("Получен запрос на создание материала")
-	var input models.MaterialCard
+	var input models.Material
 	if err := c.BindJSON(&input); err != nil {
 		logger.Warning("Ошибка привязки JSON при создании материала: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
 
-	id, err := h.services.MaterialCard.Create(input)
-	if err != nil {
+	if err := h.services.Material.Create(input); err != nil {
 		logger.Error("Ошибка при создании материала: %v", err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
 
-	logger.Info("Успешно создан материал ID:%d", id)
-	c.JSON(http.StatusCreated, gin.H{"id": id})
+	logger.Info("Успешно создан материал: %s", input.Name)
+	c.JSON(http.StatusCreated, gin.H{"message": "материал успешно создан"})
 }
 
-func (h *Handler) UpdateMaterialCard(c *gin.Context) {
+func (h *Handler) UpdateMaterial(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		logger.Warning("Неверный ID материала при обновлении: %s", c.Param("id"))
@@ -1043,14 +1073,14 @@ func (h *Handler) UpdateMaterialCard(c *gin.Context) {
 	}
 
 	logger.Debug("Получен запрос на обновление материала ID:%d", id)
-	var input models.MaterialCard
+	var input models.Material
 	if err := c.BindJSON(&input); err != nil {
 		logger.Warning("Ошибка привязки JSON при обновлении материала: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
 
-	if err := h.services.MaterialCard.Update(id, input); err != nil {
+	if err := h.services.Material.Update(id, input); err != nil {
 		logger.Error("Ошибка при обновлении материала ID:%d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1060,7 +1090,7 @@ func (h *Handler) UpdateMaterialCard(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно обновлено"})
 }
 
-func (h *Handler) DeleteMaterialCard(c *gin.Context) {
+func (h *Handler) DeleteMaterial(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
 		logger.Warning("Неверный ID материала при удалении: %s", c.Param("id"))
@@ -1069,7 +1099,7 @@ func (h *Handler) DeleteMaterialCard(c *gin.Context) {
 	}
 
 	logger.Debug("Получен запрос на удаление материала ID:%d", id)
-	if err := h.services.MaterialCard.Delete(id); err != nil {
+	if err := h.services.Material.Delete(id); err != nil {
 		logger.Error("Ошибка при удалении материала ID:%d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1079,36 +1109,84 @@ func (h *Handler) DeleteMaterialCard(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "успешно удалено"})
 }
 
-func (h *Handler) GetStorage(c *gin.Context) {
-	var storage models.Storage
-	logger.Debug("Получен запрос на получение списка материалов на складе")
-	storage, err := h.services.MaterialCard.GetStorage()
+func (h *Handler) AddMaterialQuantity(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
 	if err != nil {
-		logger.Error("Ошибка при получении списка материалов на складе: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		logger.Warning("Неверный ID материала при добавлении количества: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
 		return
 	}
 
-	logger.Debug("Успешно получен список материалов на складе")
-	c.JSON(http.StatusOK, storage)
-}
-
-func (h *Handler) AddDelivery(c *gin.Context) {
-	var delivery models.Storage
-	logger.Debug("Получен запрос на добавление доставки")
-	if err := c.BindJSON(&delivery); err != nil {
-		logger.Warning("Ошибка привязки JSON при добавлении доставки: %v", err)
+	var input struct {
+		Quantity int `json:"quantity" binding:"required"`
+	}
+	if err := c.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при добавлении количества: %v", err)
 		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
-	err := h.services.MaterialCard.AddDelivery(delivery)
-	if err != nil {
-		logger.Error("Ошибка при добавлении материалов на склад: %v", err)
+
+	logger.Debug("Получен запрос на добавление %d единиц к материалу ID:%d", input.Quantity, id)
+
+	if err := h.services.Material.AddQuantity(id, input.Quantity); err != nil {
+		logger.Error("Ошибка при добавлении количества материала ID:%d: %v", id, err)
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	logger.Debug("Успешно добавлены материалы на склад")
-	c.JSON(http.StatusOK, delivery)
+
+	// Получаем обновленный материал для проверки
+	updatedMaterial, err := h.services.Material.GetById(id)
+	if err != nil {
+		logger.Warning("Не удалось получить обновленный материал ID:%d для проверки: %v", id, err)
+	} else {
+		logger.Debug("Материал ID:%d обновлен, новое количество: %d", id, updatedMaterial.Storage)
+	}
+
+	logger.Info("Успешно добавлено количество %d к материалу ID:%d", input.Quantity, id)
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "количество успешно добавлено",
+		"new_storage": updatedMaterial.Storage,
+	})
+}
+
+func (h *Handler) SubtractMaterialQuantity(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		logger.Warning("Неверный ID материала при вычитании количества: %s", c.Param("id"))
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный ID"})
+		return
+	}
+
+	var input struct {
+		Quantity int `json:"quantity" binding:"required"`
+	}
+	if err := c.BindJSON(&input); err != nil {
+		logger.Warning("Ошибка привязки JSON при вычитании количества: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
+		return
+	}
+
+	logger.Debug("Получен запрос на вычитание %d единиц у материала ID:%d", input.Quantity, id)
+
+	if err := h.services.Material.SubtractQuantity(id, input.Quantity); err != nil {
+		logger.Error("Ошибка при вычитании количества материала ID:%d: %v", id, err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Получаем обновленный материал для проверки
+	updatedMaterial, err := h.services.Material.GetById(id)
+	if err != nil {
+		logger.Warning("Не удалось получить обновленный материал ID:%d для проверки: %v", id, err)
+	} else {
+		logger.Debug("Материал ID:%d обновлен, новое количество: %d", id, updatedMaterial.Storage)
+	}
+
+	logger.Info("Успешно вычтено количество %d у материала ID:%d", input.Quantity, id)
+	c.JSON(http.StatusOK, gin.H{
+		"status":      "количество успешно вычтено",
+		"new_storage": updatedMaterial.Storage,
+	})
 }
 
 func (h *Handler) AddPenalty(context *gin.Context) {
@@ -1259,7 +1337,6 @@ func (h *Handler) GetStatistics(context *gin.Context) {
 	context.JSON(http.StatusOK, statistics)
 }
 
-
 func (h *Handler) UpdateOnlineDate(context *gin.Context) {
 	var onlineDate models.OnlineDate
 	logger.Debug("Получен запрос на получение даты")
@@ -1283,14 +1360,14 @@ func (h *Handler) Date(context *gin.Context) {
 		ClientDesc string `json:"client_desc"`
 		Date       string `json:"date"`
 	}
-	
+
 	logger.Debug("Получен запрос на создание онлайн записи")
 	if err := context.BindJSON(&input); err != nil {
 		logger.Warning("Ошибка привязки JSON при создании записи: %v", err)
 		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
-	
+
 	// Парсим дату из HTML datetime-local формата
 	parsedDate, err := time.Parse("2006-01-02T15:04", input.Date)
 	if err != nil {
@@ -1298,7 +1375,7 @@ func (h *Handler) Date(context *gin.Context) {
 		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат даты"})
 		return
 	}
-	
+
 	onlineDate := models.OnlineDate{
 		Date:       parsedDate,
 		Name:       input.Name,
@@ -1306,15 +1383,15 @@ func (h *Handler) Date(context *gin.Context) {
 		CarNumber:  input.CarNumber,
 		ClientDesc: input.ClientDesc,
 	}
-	
+
 	err = h.services.Client.OnlineDate(&onlineDate)
 	if err != nil {
 		logger.Error("Ошибка при создании онлайн записи: %v", err)
 		context.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка сохранения записи"})
 		return
 	}
-	
-	logger.Info("Создана онлайн запись: %s (%s) на %s для машины %s", 
+
+	logger.Info("Создана онлайн запись: %s (%s) на %s для машины %s",
 		onlineDate.Name, onlineDate.Phone, onlineDate.Date.Format("2006-01-02 15:04"), onlineDate.CarNumber)
 	context.JSON(http.StatusOK, gin.H{"message": "запись успешно создана", "id": onlineDate.ID})
 }
@@ -1339,7 +1416,7 @@ func (h *Handler) CreateOnlineDate(context *gin.Context) {
 		context.JSON(http.StatusBadRequest, gin.H{"error": "неверный формат данных"})
 		return
 	}
-	
+
 	if onlineDate.Name == "" {
 		context.JSON(http.StatusBadRequest, gin.H{"error": "не указано имя клиента"})
 		return
@@ -1352,7 +1429,7 @@ func (h *Handler) CreateOnlineDate(context *gin.Context) {
 		context.JSON(http.StatusBadRequest, gin.H{"error": "не указан номер автомобиля"})
 		return
 	}
-	
+
 	err := h.services.Client.OnlineDate(&onlineDate)
 	if err != nil {
 		logger.Error("Ошибка при создании онлайн встречи: %v", err)
@@ -1376,7 +1453,7 @@ func (h *Handler) WhooseCar(context *gin.Context) {
 
 func (h *Handler) CompareClientsForCar(context *gin.Context) {
 	car := context.Param("car")
-	
+
 	// Получаем клиентов машины
 	clients, err := h.services.Client.WhooseCar(car)
 	if err != nil {
@@ -1414,4 +1491,174 @@ func (h *Handler) CompareClientsForCar(context *gin.Context) {
 
 	logger.Info("Сравнение клиентов для машины %s: найдено %d клиентов", car, len(comparisons))
 	context.JSON(http.StatusOK, comparisons)
+}
+
+// GetContractPricesTemplate генерирует Excel шаблон для загрузки цен договора
+func (h *Handler) GetContractPricesTemplate(c *gin.Context) {
+	services, err := h.services.Service.GetAll()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось получить список услуг"})
+		return
+	}
+
+	// Убираем дубликаты по названию
+	uniqueServices := make(map[string]models.Service)
+	for _, s := range services {
+		if s.Name != "" {
+			uniqueServices[s.Name] = s
+		}
+	}
+
+	// Создаем Excel файл
+	f := excelize.NewFile()
+	defer f.Close()
+
+	// Устанавливаем заголовки
+	headers := []string{"Название услуги", "Цена"}
+	for i, header := range headers {
+		cell := fmt.Sprintf("%c1", 'A'+i)
+		f.SetCellValue("Sheet1", cell, header)
+	}
+
+	// Заполняем данными
+	row := 2
+	for name, service := range uniqueServices {
+		// Произвольная услуга всегда стоит 0
+		price := service.Price
+		if strings.Contains(strings.ToLower(name), "произвольная") {
+			price = 0
+		}
+
+		f.SetCellValue("Sheet1", fmt.Sprintf("A%d", row), name)
+		f.SetCellValue("Sheet1", fmt.Sprintf("B%d", row), price)
+		row++
+	}
+
+	// Устанавливаем ширину столбцов
+	f.SetColWidth("Sheet1", "A", "A", 30)
+	f.SetColWidth("Sheet1", "B", "B", 15)
+
+	// Устанавливаем заголовок ответа
+	c.Header("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+	c.Header("Content-Disposition", "attachment; filename=contract_prices_template.xlsx")
+
+	// Записываем в ответ
+	if err := f.Write(c.Writer); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось сгенерировать файл"})
+		return
+	}
+}
+
+// UploadContractPrices принимает Excel файл и создает записи цен для договора
+func (h *Handler) UploadContractPrices(c *gin.Context) {
+	contractID, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID договора"})
+		return
+	}
+
+	file, err := c.FormFile("file")
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Не удалось получить файл"})
+		return
+	}
+
+	// Проверяем тип файла
+	if !strings.HasSuffix(strings.ToLower(file.Filename), ".xlsx") &&
+		!strings.HasSuffix(strings.ToLower(file.Filename), ".xls") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Поддерживаются только Excel файлы (.xlsx, .xls)"})
+		return
+	}
+
+	src, err := file.Open()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось открыть файл"})
+		return
+	}
+	defer src.Close()
+
+	// Читаем Excel файл
+	f, err := excelize.OpenReader(src)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный формат Excel файла"})
+		return
+	}
+	defer f.Close()
+
+	// Получаем первый лист
+	sheetName := f.GetSheetName(0)
+	rows, err := f.GetRows(sheetName)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Не удалось прочитать данные из файла"})
+		return
+	}
+
+	if len(rows) < 2 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Файл должен содержать заголовок и хотя бы одну строку с данными"})
+		return
+	}
+
+	var items []models.Service
+	var errors []string
+
+	for _, row := range rows[1:] { // Пропускаем заголовок
+		if len(row) < 2 {
+			continue
+		}
+
+		name := strings.TrimSpace(row[0])
+		if name == "" {
+			continue
+		}
+
+		// Получаем цену
+		var price int
+		if len(row) > 1 {
+			priceStr := strings.TrimSpace(row[1])
+			if priceStr != "" {
+				if p, err := strconv.Atoi(priceStr); err == nil {
+					price = p
+				}
+			}
+		}
+
+		// Произвольная услуга всегда стоит 0
+		if strings.Contains(strings.ToLower(name), "произвольная") {
+			price = 0
+		}
+
+		items = append(items, models.Service{
+			Name:  name,
+			Price: price,
+		})
+	}
+
+	if len(items) == 0 {
+		if len(errors) > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{
+				"error":   "Не найдено валидных строк с ценами",
+				"details": errors,
+			})
+		} else {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Не найдено валидных строк с ценами"})
+		}
+		return
+	}
+
+	if err := h.services.Contract.AddServicesToContract(contractID, items); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	response := gin.H{
+		"status": "ok",
+		"added":  len(items),
+	}
+
+	if len(errors) > 0 {
+		response["warnings"] = errors
+		response["message"] = fmt.Sprintf("Успешно добавлено %d услуг. %d услуг пропущено из-за ошибок.", len(items), len(errors))
+	}
+
+	c.JSON(http.StatusOK, response)
 }

@@ -1,301 +1,208 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { Package, Plus, Edit, Trash2, Warehouse, TruckIcon } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from "@/components/ui/table"
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from "@/components/ui/tabs"
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { DashboardLayout } from "@/components/layout/dashboard-layout"
-import { useToast } from "@/hooks/use-toast"
-import { materialsApi, MaterialCard, Storage } from "@/lib/api"
-import { MaterialCardDialog } from "@/components/materials/material-card-dialog"
-import { DeliveryDialog } from "@/components/materials/delivery-dialog"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Badge } from "@/components/ui/badge"
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog"
+import { materialsApi, Material } from "@/lib/api"
+import { toast } from "@/hooks/use-toast"
+import { MaterialDialog } from "@/components/materials/material-dialog"
+import { QuantityDialog } from "@/components/materials/quantity-dialog"
+import { Plus, Edit, Trash2, Plus as PlusIcon, Minus as MinusIcon } from "lucide-react"
 
 export default function MaterialsPage() {
-  const [materialCards, setMaterialCards] = useState<MaterialCard[]>([])
-  const [storage, setStorage] = useState<Storage | null>(null)
-  const [isLoading, setIsLoading] = useState(true)
-  const [materialCardDialogOpen, setMaterialCardDialogOpen] = useState(false)
-  const [editingMaterialCard, setEditingMaterialCard] = useState<MaterialCard | null>(null)
-  const [deliveryDialogOpen, setDeliveryDialogOpen] = useState(false)
-  const { toast } = useToast()
-
-  const fetchMaterialCards = async () => {
-    try {
-      const data = await materialsApi.getAllMaterialCards()
-      setMaterialCards(data || [])
-    } catch (error: any) {
-      console.error("Ошибка при загрузке технологических карт:", error)
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: error.message || "Не удалось загрузить технологические карты",
-      })
-    }
-  }
-
-  const fetchStorage = async () => {
-    try {
-      const data = await materialsApi.getStorage()
-      setStorage(data)
-    } catch (error: any) {
-      console.error("Ошибка при загрузке данных склада:", error)
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: error.message || "Не удалось загрузить данные склада",
-      })
-    }
-  }
-
-  const fetchData = async () => {
-    setIsLoading(true)
-    await Promise.all([fetchMaterialCards(), fetchStorage()])
-    setIsLoading(false)
-  }
+  const [materials, setMaterials] = useState<Material[]>([])
+  const [loading, setLoading] = useState(true)
+  
+  // Состояния для диалогов
+  const [materialDialogOpen, setMaterialDialogOpen] = useState(false)
+  const [editingMaterial, setEditingMaterial] = useState<Material | null>(null)
+  const [quantityDialogOpen, setQuantityDialogOpen] = useState(false)
+  const [selectedMaterial, setSelectedMaterial] = useState<Material | null>(null)
+  const [quantityOperation, setQuantityOperation] = useState<"add" | "subtract">("add")
 
   useEffect(() => {
-    fetchData()
+    fetchMaterials()
   }, [])
 
-  const handleDeleteCard = async (id: number) => {
-    if (!confirm("Вы уверены, что хотите удалить эту технологическую карту?")) {
-      return
-    }
-
+  const fetchMaterials = async () => {
     try {
-      await materialsApi.deleteMaterialCard(id)
+      setLoading(true)
+      const data = await materialsApi.getAll()
+      setMaterials(data)
+    } catch (error) {
+      console.error('Ошибка загрузки материалов:', error)
+      toast({
+        title: "Ошибка",
+        description: "Не удалось загрузить материалы",
+        variant: "destructive",
+      })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleCreateMaterial = () => {
+    setEditingMaterial(null)
+    setMaterialDialogOpen(true)
+  }
+
+  const handleEditMaterial = (material: Material) => {
+    setEditingMaterial(material)
+    setMaterialDialogOpen(true)
+  }
+
+  const handleDeleteMaterial = async (material: Material) => {
+    try {
+      await materialsApi.delete(material.id)
+      await fetchMaterials()
       toast({
         title: "Успешно",
-        description: "Технологическая карта удалена",
+        description: `Материал "${material.name}" удален`,
       })
-      fetchMaterialCards()
     } catch (error: any) {
       toast({
-        variant: "destructive",
         title: "Ошибка",
-        description: error.message || "Не удалось удалить технологическую карту",
+        description: error.message || "Не удалось удалить материал",
+        variant: "destructive",
       })
     }
   }
 
-  const handleCreateMaterialCard = () => {
-    setEditingMaterialCard(null)
-    setMaterialCardDialogOpen(true)
-  }
+  const handleQuantityOperation = (material: Material, operation: "add" | "subtract") => {
+    setSelectedMaterial(material)
+    setQuantityOperation(operation)
+    setQuantityDialogOpen(true)
+    }
 
-  const handleEditMaterialCard = (card: MaterialCard) => {
-    setEditingMaterialCard(card)
-    setMaterialCardDialogOpen(true)
-  }
 
-  const handleAddDelivery = () => {
-    setDeliveryDialogOpen(true)
-  }
 
-  const materialFields = [
-    { key: 'rs25', label: 'RS25' },
-    { key: 'r19', label: 'R19' },
-    { key: 'r20', label: 'R20' },
-    { key: 'r25', label: 'R25' },
-    { key: 'r251', label: 'R251' },
-    { key: 'r13', label: 'R13' },
-    { key: 'r15', label: 'R15' },
-    { key: 'foot9', label: 'Foot9' },
-    { key: 'foot12', label: 'Foot12' },
-    { key: 'foot15', label: 'Foot15' },
-  ]
-
-  if (isLoading) {
-    return (
-      <DashboardLayout>
-        <div className="space-y-4">
-          <div className="flex justify-between items-center">
-            <h1 className="text-2xl font-bold">Материалы</h1>
-          </div>
-          <div className="text-center py-8">Загрузка...</div>
-        </div>
-      </DashboardLayout>
-    )
+  if (loading) {
+    return <div className="flex items-center justify-center h-64">Загрузка...</div>
   }
 
   return (
-    <DashboardLayout>
-      <div className="space-y-4">
-        <div className="flex justify-between items-center">
-          <h1 className="text-2xl font-bold">Управление материалами</h1>
-        </div>
+    <DashboardLayout requiredRole="manager">
+    <div className="space-y-6">
+      <div className="flex items-center justify-between">
+        <h1 className="text-3xl font-bold">Материалы</h1>
+          <Button onClick={handleCreateMaterial}>
+            <Plus className="w-4 h-4 mr-2" />
+            Создать материал
+          </Button>
+      </div>
 
-        <Tabs defaultValue="storage" className="space-y-4">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="storage" className="flex items-center gap-2">
-              <Warehouse className="w-4 h-4" />
-              Склад
-            </TabsTrigger>
-            <TabsTrigger value="cards" className="flex items-center gap-2">
-              <Package className="w-4 h-4" />
-              Технологические карты
-            </TabsTrigger>
-            <TabsTrigger value="delivery" className="flex items-center gap-2">
-              <TruckIcon className="w-4 h-4" />
-              Поставки
-            </TabsTrigger>
-          </TabsList>
-
-          <TabsContent value="storage" className="space-y-4">
-            <Card>
-              <CardHeader>
-                <CardTitle>Текущее состояние склада</CardTitle>
-                <CardDescription>
-                  Количество материалов на складе
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {storage ? (
-                  <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
-                    {materialFields.map((field) => (
-                      <div key={field.key} className="text-center p-4 border rounded-lg">
-                        <div className="text-2xl font-bold text-blue-600">
-                          {storage[field.key as keyof Storage]}
+          <Card>
+            <CardHeader>
+            <CardTitle>Список материалов</CardTitle>
+            </CardHeader>
+          <CardContent>
+            {materials.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Материалы не найдены. Создайте первый материал.
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {materials.map((material) => (
+                  <div key={material.id} className="p-4 border rounded-lg">
+                    <div className="flex justify-between items-start mb-3">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-3 mb-2">
+                          <h3 className="font-semibold text-lg">{material.name}</h3>
+                          <Badge variant="secondary">
+                            Тип ДС: {material.type_ds}
+                          </Badge>
                         </div>
                         <div className="text-sm text-muted-foreground">
-                          {field.label}
+                          ID: {material.id} • Создан: {new Date(material.created_at).toLocaleDateString()}
                         </div>
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="text-center py-8 text-muted-foreground">
-                    Данные склада не найдены
-                  </div>
-                )}
-              </CardContent>
-            </Card>
-          </TabsContent>
-
-          <TabsContent value="cards" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Технологические карты</h2>
-              <Button onClick={handleCreateMaterialCard}>
-                <Plus className="w-4 h-4 mr-2" />
-                Создать карту
-              </Button>
-            </div>
-
-            <div className="border rounded-lg">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>ID</TableHead>
-                    {materialFields.map((field) => (
-                      <TableHead key={field.key} className="text-center">
-                        {field.label}
-                      </TableHead>
-                    ))}
-                    <TableHead className="w-[100px]">Действия</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {materialCards.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={materialFields.length + 2} className="text-center py-8">
-                        Технологические карты не найдены
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    materialCards.map((card) => (
-                      <TableRow key={card.id}>
-                        <TableCell className="font-medium">{card.id}</TableCell>
-                        {materialFields.map((field) => (
-                          <TableCell key={field.key} className="text-center">
-                            {card[field.key as keyof MaterialCard]}
-                          </TableCell>
-                        ))}
-                        <TableCell>
-                          <div className="flex space-x-2">
-                            <Button 
-                              variant="ghost" 
-                              size="sm" 
-                              onClick={() => handleEditMaterialCard(card)}
-                            >
-                              <Edit className="w-4 h-4" />
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleQuantityOperation(material, "add")}
+                        >
+                          <PlusIcon className="w-4 h-4 mr-1" />
+                          Добавить
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleQuantityOperation(material, "subtract")}
+                          disabled={material.storage === 0}
+                        >
+                          <MinusIcon className="w-4 h-4 mr-1" />
+                          Вычесть
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => handleEditMaterial(material)}
+                        >
+                          <Edit className="w-4 h-4 mr-1" />
+                          Редактировать
+                        </Button>
+                        <AlertDialog>
+                          <AlertDialogTrigger asChild>
+                            <Button size="sm" variant="destructive">
+                              <Trash2 className="w-4 h-4 mr-1" />
+                              Удалить
                             </Button>
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => handleDeleteCard(card.id)}
-                              className="text-red-600"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </div>
-          </TabsContent>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent>
+                            <AlertDialogHeader>
+                              <AlertDialogTitle>Удалить материал?</AlertDialogTitle>
+                              <AlertDialogDescription>
+                                Это действие нельзя отменить. Материал "{material.name}" будет удален навсегда.
+                              </AlertDialogDescription>
+                            </AlertDialogHeader>
+                            <AlertDialogFooter>
+                              <AlertDialogCancel>Отмена</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => handleDeleteMaterial(material)}>
+                                Удалить
+                              </AlertDialogAction>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
+                      </div>
+                    </div>
+                    
+                    <div className="flex items-center justify-between">
+                      <div className="text-2xl font-bold">
+                        {material.storage} шт.
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        Обновлен: {new Date(material.updated_at).toLocaleDateString()}
+                        </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+            </CardContent>
+          </Card>
 
-          <TabsContent value="delivery" className="space-y-4">
-            <div className="flex justify-between items-center">
-              <h2 className="text-xl font-semibold">Поставки материалов</h2>
-              <Button onClick={handleAddDelivery}>
-                <TruckIcon className="w-4 h-4 mr-2" />
-                Оформить поставку
-              </Button>
-            </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle>Управление поставками</CardTitle>
-                <CardDescription>
-                  Здесь вы можете оформить поставку материалов на склад
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="text-center py-8 text-muted-foreground">
-                  Функциональность будет добавлена позже
-                </div>
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
-
-        {/* Диалоги */}
-        <MaterialCardDialog
-          open={materialCardDialogOpen}
-          onOpenChange={setMaterialCardDialogOpen}
-          materialCard={editingMaterialCard}
-          onSuccess={fetchData}
-        />
-
-        <DeliveryDialog
-          open={deliveryDialogOpen}
-          onOpenChange={setDeliveryDialogOpen}
-          onSuccess={fetchData}
-        />
-      </div>
+      {/* Диалоги */}
+        <MaterialDialog
+          open={materialDialogOpen}
+          onOpenChange={setMaterialDialogOpen}
+          material={editingMaterial}
+          onSuccess={fetchMaterials}
+      />
+      
+        {selectedMaterial && (
+          <QuantityDialog
+            open={quantityDialogOpen}
+            onOpenChange={setQuantityDialogOpen}
+            material={selectedMaterial}
+            operation={quantityOperation}
+            onSuccess={fetchMaterials}
+      />
+        )}
+    </div>
     </DashboardLayout>
   )
 } 

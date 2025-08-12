@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
-import { ordersApi, clientsApi, servicesApi, workersApi, fetchWithAuth } from "@/lib/api"
+import { ordersApi, clientsApi, servicesApi, workersApi, materialsApi, fetchWithAuth } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { X, Info } from "lucide-react"
 import ClientComparisonDialog from "./client-comparison-dialog"
@@ -37,7 +37,6 @@ interface Service {
   name: string
   price: number
   contract_id: number
-  material_card: number
   created_at: string
   updated_at: string
 }
@@ -62,19 +61,26 @@ interface FormData {
   payment_method: string
   total_amount: number
   description: string
+  status: string
   services: Array<{
     service_id: number
     description: string
     price: number
   }>
+  materials: Array<{
+    material_id: number
+    quantity: number
+  }>
 }
 
 export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderFormDialogProps) {
-  const [clients, setClients] = useState<Client[]>([])
   const [services, setServices] = useState<Service[]>([])
+  const [clients, setClients] = useState<Client[]>([])
   const [workers, setWorkers] = useState<Worker[]>([])
   const [clientVehicles, setClientVehicles] = useState<Vehicle[]>([])
-  const [loading, setLoading] = useState(true)
+  const [materials, setMaterials] = useState<any[]>([])
+
+  const [loading, setLoading] = useState(false)
   const [submitting, setSubmitting] = useState(false)
   const [loadingVehicles, setLoadingVehicles] = useState(false)
   const { toast } = useToast()
@@ -87,7 +93,9 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     payment_method: "",
     total_amount: 0,
     description: "",
+    status: "запланирован",
     services: [],
+    materials: [],
   })
 
   // Состояния для пошагового выбора
@@ -187,8 +195,12 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
   const fetchInitialData = async () => {
     try {
       setLoading(true)
-      const workersData = await workersApi.getAll()
+      const [workersData, materialsData] = await Promise.all([
+        workersApi.getAll(),
+        materialsApi.getAll()
+      ])
       setWorkers(workersData)
+      setMaterials(materialsData)
     } catch (error: any) {
       toast({
         variant: "destructive",
@@ -241,6 +253,29 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     } finally {
       setLoadingVehicles(false)
     }
+  }
+
+  const addMaterial = () => {
+    setFormData(prev => ({
+      ...prev,
+      materials: [...prev.materials, { material_id: 0, quantity: 1 }]
+    }))
+  }
+
+  const removeMaterial = (index: number) => {
+    setFormData(prev => ({
+      ...prev,
+      materials: prev.materials.filter((_, i) => i !== index)
+    }))
+  }
+
+  const updateMaterial = (index: number, field: 'material_id' | 'quantity', value: number) => {
+    setFormData(prev => ({
+      ...prev,
+      materials: prev.materials.map((material, i) => 
+        i === index ? { ...material, [field]: value } : material
+      )
+    }))
   }
 
   const handleVehicleNumberBlur = async () => {
@@ -364,18 +399,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     const service = services.find(s => s.id === parseInt(serviceId))
     if (!service) return
 
-    // Проверяем, не добавлена ли уже эта услуга
     const serviceIdNum = parseInt(serviceId)
-    const alreadyAdded = formData.services.some(s => s.service_id === serviceIdNum)
-    if (alreadyAdded) {
-      toast({
-        variant: "destructive",
-        title: "Ошибка",
-        description: "Эта услуга уже добавлена",
-      })
-      return
-    }
-
     const newService = {
       service_id: serviceIdNum,
       description: service.name,
@@ -451,6 +475,24 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
     try {
       setSubmitting(true)
       
+      // Сначала вычитаем расходники со склада
+      if (formData.materials.length > 0) {
+        for (const material of formData.materials) {
+          if (material.material_id > 0 && material.quantity > 0) {
+            try {
+              await materialsApi.subtractQuantity(material.material_id, material.quantity)
+            } catch (error: any) {
+              toast({
+                variant: "destructive",
+                title: "Ошибка",
+                description: `Не удалось вычесть расходник: ${error.message}`,
+              })
+              return
+            }
+          }
+        }
+      }
+      
       const orderData = {
         client_id: selectedClientType === "НАЛИЧКА" ? 1 : formData.client_id,
         worker_id: parseInt(formData.worker_id),
@@ -458,14 +500,20 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
         payment_method: formData.payment_method || (selectedClientType === "НАЛИЧКА" ? "cash" : "contract"),
         total_amount: formData.total_amount,
         description: formData.description,
-        services: formData.services
+        status: formData.status,
+        services: formData.services.map(service => ({
+          service_id: service.service_id,
+          description: service.description,
+          price: service.price,
+          wheel_position: "НЕ УКАЗАН"
+        }))
       }
 
       await ordersApi.createManager(orderData)
       
       toast({
         title: "Успешно",
-        description: "Заказ создан",
+        description: "Заказ создан и расходники вычтены со склада",
       })
       
       onSuccess()
@@ -490,7 +538,9 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       payment_method: "",
       total_amount: 0,
       description: "",
+      status: "запланирован",
       services: [],
+      materials: [],
     })
     setSelectedClientType("")
     setSelectedClient(null)
@@ -539,8 +589,8 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   </Select>
                 </div>
 
-                {/* Способ оплаты */}
-                {selectedClientType && (
+                {/* Способ оплаты - только для налички */}
+                {selectedClientType === "НАЛИЧКА" && (
                   <div className="space-y-2">
                     <Label>Способ оплаты *</Label>
                     <Select 
@@ -560,6 +610,24 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                     </Select>
                   </div>
                 )}
+
+                {/* Выбор статуса заказа */}
+                <div className="space-y-2">
+                  <Label>Статус заказа *</Label>
+                  <Select 
+                    value={formData.status} 
+                    onValueChange={(value) => setFormData(prev => ({ ...prev, status: value }))}
+                  >
+                    <SelectTrigger>
+                      <SelectValue placeholder="Выберите статус заказа" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="запланирован">Запланирован</SelectItem>
+                      <SelectItem value="выполняется">Выполняется</SelectItem>
+                      <SelectItem value="выполнен">Выполнен</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
               {/* Шаг 2: Выбор клиента (для контрагентов и агрегаторов) */}
@@ -664,23 +732,6 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                       placeholder="Введите номер машины"
                     />
                   </div>
-                  
-                  <div className="space-y-2">
-                    <Label>Способ оплаты *</Label>
-                    <Select 
-                      value={formData.payment_method} 
-                      onValueChange={(value) => setFormData(prev => ({ ...prev, payment_method: value }))}
-                    >
-                      <SelectTrigger>
-                        <SelectValue placeholder="Выберите способ оплаты" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="cash">Наличные</SelectItem>
-                        <SelectItem value="transfer">Перевод</SelectItem>
-                        <SelectItem value="card">Карта</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
                 </div>
               )}
 
@@ -729,13 +780,11 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                         <SelectValue placeholder="Выберите услугу для добавления" />
                       </SelectTrigger>
                       <SelectContent>
-                        {services
-                          .filter(service => !formData.services.some(s => s.service_id === service.id))
-                          .map((service) => (
-                            <SelectItem key={service.id} value={service.id.toString()}>
-                              {service.name} - {service.price} ₽
-                            </SelectItem>
-                          ))}
+                        {services.map((service) => (
+                          <SelectItem key={service.id} value={service.id.toString()}>
+                            {service.name} - {service.price} ₽
+                          </SelectItem>
+                        ))}
                       </SelectContent>
                     </Select>
                   </div>
@@ -791,6 +840,62 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                     >
                       Добавить услугу
                     </Button>
+                  </div>
+
+                  {/* Расходники */}
+                  <div className="space-y-2 border-t pt-4">
+                    <div className="flex items-center justify-between">
+                      <Label>Расходники</Label>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={addMaterial}
+                      >
+                        Добавить расходник
+                      </Button>
+                    </div>
+                    
+                    {formData.materials.length > 0 && (
+                      <div className="space-y-2">
+                        {formData.materials.map((material, index) => (
+                          <div key={index} className="flex items-center gap-2 rounded-lg border p-3">
+                            <Select 
+                              value={material.material_id.toString()} 
+                              onValueChange={(value) => updateMaterial(index, 'material_id', parseInt(value))}
+                            >
+                              <SelectTrigger className="w-48">
+                                <SelectValue placeholder="Выберите материал" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {materials.map((mat) => (
+                                  <SelectItem key={mat.id} value={mat.id.toString()}>
+                                    {mat.name} (остаток: {mat.storage})
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                            <Input
+                              type="number"
+                              min="1"
+                              max={materials.find(m => m.id === material.material_id)?.storage || 1}
+                              placeholder="Количество"
+                              value={material.quantity}
+                              onChange={(e) => updateMaterial(index, 'quantity', parseInt(e.target.value) || 1)}
+                              className="w-24"
+                            />
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => removeMaterial(index)}
+                            >
+                              <X className="h-4 w-4" />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
                   {/* Общая сумма */}

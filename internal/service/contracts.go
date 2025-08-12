@@ -34,3 +34,8 @@ func (s *ContractService) Delete(id int) error {
 	logger.Debug("Удаление договора в сервисе: %d", id)
 	return s.repo.DeleteContract(id)
 }
+
+func (s *ContractService) AddServicesToContract(contractID int, services []models.Service) error {
+	logger.Debug("Добавление услуг к договору в сервисе: %d", contractID)
+	return s.repo.AddServicesToContract(contractID, services)
+}

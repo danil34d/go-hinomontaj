@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"go-hinomontaj/models"
 	"go-hinomontaj/pkg/logger"
+	"strings"
 	"time"
 
 	"github.com/jmoiron/sqlx"
@@ -16,7 +17,7 @@ type Repository struct {
 func (r *Repository) GetServicePricesByContract(contractID int) ([]models.Service, error) {
 	var servicePrices []models.Service
 	query := `
-		SELECT s.id, s.name, s.price, s.contract_id, s.material_card, s.created_at, s.updated_at
+		SELECT s.id, s.name, s.price, s.contract_id, s.created_at, s.updated_at
 		FROM services s WHERE s.contract_id = $1
 	`
 	err := r.db.Select(&servicePrices, query, contractID)
@@ -29,11 +30,19 @@ func (r *Repository) GetServicePricesByContract(contractID int) ([]models.Servic
 
 func (r *Repository) CreateContract(contract models.Contract) (int, error) {
 	var id int
+	// Сначала проверяем, существует ли контракт с таким номером
+	checkQuery := `SELECT id FROM contracts WHERE number = $1`
+	err := r.db.Get(&id, checkQuery, contract.Number)
+	if err == nil && id != 0 {
+		logger.Info("Контракт с номером %s уже существует, ID: %d", contract.Number, id)
+		return id, nil
+	}
+
 	query := `
 		INSERT INTO contracts (number, client_type, client_company_name, client_company_address, client_company_phone, client_company_email, client_company_inn, client_company_kpp, client_company_ogrn)
 		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		RETURNING id`
-	err := r.db.QueryRow(query, contract.Number, contract.ClientType, contract.ClientCompanyName, contract.ClientCompanyAddress, contract.ClientCompanyPhone, contract.ClientCompanyEmail, contract.ClientCompanyINN, contract.ClientCompanyKPP, contract.ClientCompanyOGRN).Scan(&id)
+	err = r.db.QueryRow(query, contract.Number, contract.ClientType, contract.ClientCompanyName, contract.ClientCompanyAddress, contract.ClientCompanyPhone, contract.ClientCompanyEmail, contract.ClientCompanyINN, contract.ClientCompanyKPP, contract.ClientCompanyOGRN).Scan(&id)
 	if err != nil {
 		logger.Error("Ошибка при создании контракта: %v", err)
 		return 0, fmt.Errorf("ошибка при создании контракта: %w", err)
@@ -54,6 +63,35 @@ func (r *Repository) GetAllContracts() ([]models.Contract, error) {
 		return nil, fmt.Errorf("ошибка при получении списка контрактов: %w", err)
 	}
 	return contracts, nil
+}
+
+func (r *Repository) AddServicesToContract(contractID int, services []models.Service) error {
+	tx, err := r.db.Begin()
+	if err != nil {
+		logger.Error("Ошибка при начале транзакции: %v", err)
+		return fmt.Errorf("ошибка при начале транзакции: %w", err)
+	}
+	defer tx.Rollback()
+
+	query := `
+		INSERT INTO services (name, price, contract_id)
+		VALUES ($1, $2, $3)
+	`
+
+	for _, s := range services {
+		if _, err := tx.Exec(query, s.Name, s.Price, contractID); err != nil {
+			logger.Error("Ошибка при добавлении услуги %s к договору %d: %v", s.Name, contractID, err)
+			return fmt.Errorf("ошибка при добавлении услуг к договору: %w", err)
+		}
+	}
+
+	if err = tx.Commit(); err != nil {
+		logger.Error("Ошибка при завершении транзакции: %v", err)
+		return fmt.Errorf("ошибка при завершении транзакции: %w", err)
+	}
+
+	logger.Info("Услуги успешно добавлены к договору ID:%d", contractID)
+	return nil
 }
 
 func (r *Repository) UpdateContract(id int, contract models.Contract) error {
@@ -233,7 +271,7 @@ func (r *Repository) CreateClient(client models.Client) (int, error) {
 		RETURNING id`
 
 	logger.Debug("Создание нового клиента: %s", client.Name)
-	err := r.db.QueryRow(query, client.Name, client.ClientType, client.OwnerPhone, client.ManagerPhone, client.ContractID).Scan(&id)
+	err := r.db.QueryRow(query, client.Name, strings.ToUpper(client.ClientType), client.OwnerPhone, client.ManagerPhone, client.ContractID).Scan(&id)
 	if err != nil {
 		logger.Error("Ошибка при создании клиента: %v", err)
 		return 0, fmt.Errorf("ошибка при создании клиента: %w", err)
@@ -321,7 +359,7 @@ func (r *Repository) AddCarToClient(clientId int, car models.Car) error {
 	// Сначала пытаемся найти существующую машину
 	query := `SELECT id FROM cars WHERE number = $1`
 	err = tx.QueryRow(query, car.Number).Scan(&carId)
-	
+
 	if err != nil {
 		// Если машина не найдена, создаем новую
 		if err.Error() == "sql: no rows in result set" {
@@ -428,12 +466,12 @@ func (r *Repository) DeleteClient(id int) error {
 func (r *Repository) CreateService(service models.Service) (int, error) {
 	var id int
 	query := `
-		INSERT INTO services (name, price, contract_id, material_card)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO services (name, price, contract_id)
+		VALUES ($1, $2, $3)
 		RETURNING id`
 
 	logger.Debug("Создание новой услуги: %s", service.Name)
-	err := r.db.QueryRow(query, service.Name, service.Price, service.ContractID, service.MaterialCardId).Scan(&id)
+	err := r.db.QueryRow(query, service.Name, service.Price, service.ContractID).Scan(&id)
 	if err != nil {
 		logger.Error("Ошибка при создании услуги: %v", err)
 		return 0, fmt.Errorf("ошибка при создании услуги: %w", err)
@@ -446,7 +484,7 @@ func (r *Repository) CreateService(service models.Service) (int, error) {
 func (r *Repository) GetAllServices() ([]models.Service, error) {
 	var services []models.Service
 	query := `
-		SELECT id, name, price, contract_id, material_card, created_at, updated_at
+		SELECT id, name, price, contract_id, created_at, updated_at
 		FROM services`
 
 	logger.Debug("Получение списка всех услуг")
@@ -463,7 +501,7 @@ func (r *Repository) GetAllServices() ([]models.Service, error) {
 func (r *Repository) GetAllWithPrices() ([]models.ServiceWithPrices, error) {
 	var servicePrices []models.ServicePrice
 	query := `
-		SELECT s.id, s.contract_id, c.number as contract_name, s.name as service_name, s.material_card as material_card_id, s.price
+		SELECT s.id, s.contract_id, c.number as contract_name, s.name as service_name, s.price
 		FROM services s
 		JOIN contracts c ON s.contract_id = c.id
 		ORDER BY s.name, c.number`
@@ -480,8 +518,7 @@ func (r *Repository) GetAllWithPrices() ([]models.ServiceWithPrices, error) {
 	for _, sp := range servicePrices {
 		if _, exists := servicesMap[sp.ServiceName]; !exists {
 			servicesMap[sp.ServiceName] = &models.ServiceWithPrices{
-				Name:         sp.ServiceName,
-				MaterialCard: sp.MaterialCardID,
+				Name: sp.ServiceName,
 				Prices: []struct {
 					ContractID   int    `json:"contract_id"`
 					ContractName string `json:"contract_name"`
@@ -522,13 +559,13 @@ func (r *Repository) WhooseCar(car string) ([]models.Client, error) {
 		JOIN cars ON cars.id = cc.car_id 
 		WHERE cars.number = $1
 		GROUP BY c.id, c.name, c.client_type, c.owner_phone, c.manager_phone, c.contract_id, c.created_at, c.updated_at`
-	
+
 	err := r.db.Select(&clients, query, car)
 	if err != nil {
 		logger.Error("Ошибка при поиске владельцев машины %s: %v", car, err)
 		return nil, fmt.Errorf("ошибка при поиске владельцев машины: %w", err)
 	}
-	
+
 	logger.Debug("Найдено %d владельцев для машины %s", len(clients), car)
 	return clients, nil
 }
@@ -536,11 +573,11 @@ func (r *Repository) WhooseCar(car string) ([]models.Client, error) {
 func (r *Repository) UpdateService(id int, service models.Service) error {
 	query := `
 		UPDATE services
-		SET name = $1, price = $2, material_card = $3, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $4`
+		SET name = $1, price = $2, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $3`
 
 	logger.Debug("Обновление данных услуги ID: %d", id)
-	result, err := r.db.Exec(query, service.Name, service.Price, service.MaterialCardId, id)
+	result, err := r.db.Exec(query, service.Name, service.Price, id)
 	if err != nil {
 		logger.Error("Ошибка при обновлении услуги: %v", err)
 		return fmt.Errorf("ошибка при обновлении услуги: %w", err)
@@ -589,12 +626,12 @@ func (r *Repository) CreateOrder(order models.Order) (int, error) {
 
 	var orderId int
 	query := `
-		INSERT INTO orders (worker_id, client_id, vehicle_number, payment_method, total_amount)
-		VALUES ($1, $2, $3, $4, $5)
+		INSERT INTO orders (status, worker_id, client_id, vehicle_number, payment_method, total_amount)
+		VALUES ($1, $2, $3, $4, $5, $6)
 		RETURNING id`
 
 	logger.Debug("Создание нового заказа")
-	err = tx.QueryRow(query, order.WorkerID, order.ClientID, order.VehicleNumber, order.PaymentMethod, order.TotalAmount).Scan(&orderId)
+	err = tx.QueryRow(query, order.Status, order.WorkerID, order.ClientID, order.VehicleNumber, order.PaymentMethod, order.TotalAmount).Scan(&orderId)
 	if err != nil {
 		logger.Error("Ошибка при создании заказа: %v", err)
 		return 0, fmt.Errorf("ошибка при создании заказа: %w", err)
@@ -632,7 +669,7 @@ func (r *Repository) CreateOrder(order models.Order) (int, error) {
 func (r *Repository) GetAllOrders() ([]models.Order, error) {
 	var orders []models.Order
 	query := `
-		SELECT o.id, o.worker_id, o.client_id, o.vehicle_number, o.payment_method, o.total_amount,
+		SELECT o.id, o.status, o.worker_id, o.client_id, o.vehicle_number, o.payment_method, o.total_amount,
 			   o.created_at, o.updated_at
 		FROM orders o`
 
@@ -659,7 +696,7 @@ func (r *Repository) GetAllOrders() ([]models.Order, error) {
 func (r *Repository) GetOrdersByWorkerId(workerId int) ([]models.Order, error) {
 	var orders []models.Order
 	query := `
-		SELECT o.id, o.worker_id, o.client_id, o.vehicle_number, o.payment_method, o.total_amount,
+		SELECT o.id, o.status, o.worker_id, o.client_id, o.vehicle_number, o.payment_method, o.total_amount,
 			   o.created_at, o.updated_at
 		FROM orders o
 		WHERE o.worker_id = $1`
@@ -694,12 +731,12 @@ func (r *Repository) UpdateOrder(id int, order models.Order) error {
 	// Обновляем основную информацию о заказе
 	query := `
 		UPDATE orders
-		SET worker_id = $1, client_id = $2, vehicle_number = $3, payment_method = $4, total_amount = $5,
+		SET status = $1, worker_id = $2, client_id = $3, vehicle_number = $4, payment_method = $5, total_amount = $6,
 			updated_at = CURRENT_TIMESTAMP
-		WHERE id = $6`
+		WHERE id = $7`
 
 	logger.Debug("Обновление данных заказа ID: %d", id)
-	result, err := tx.Exec(query, order.WorkerID, order.ClientID, order.VehicleNumber, order.PaymentMethod, order.TotalAmount, id)
+	result, err := tx.Exec(query, order.Status, order.WorkerID, order.ClientID, order.VehicleNumber, order.PaymentMethod, order.TotalAmount, id)
 	if err != nil {
 		logger.Error("Ошибка при обновлении заказа: %v", err)
 		return fmt.Errorf("ошибка при обновлении заказа: %w", err)
@@ -762,6 +799,274 @@ func (r *Repository) DeleteOrder(id int) error {
 	return nil
 }
 
+func (r *Repository) UpdateOrderStatus(id int, status string) error {
+	query := `
+		UPDATE orders
+		SET status = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2`
+
+	logger.Debug("Обновление статуса заказа ID: %d на %s", id, status)
+	result, err := r.db.Exec(query, status, id)
+	if err != nil {
+		logger.Error("Ошибка при обновлении статуса заказа: %v", err)
+		return fmt.Errorf("ошибка при обновлении статуса заказа: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при получении количества обновленных строк: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("заказ с ID %d не найден", id)
+	}
+
+	logger.Info("Статус заказа успешно обновлен")
+	return nil
+}
+
+func (r *Repository) AddMaterial(material models.Material) error {
+	// Проверяем, существует ли уже материал с таким именем и типом
+	var existingId int
+	checkQuery := `SELECT id FROM material WHERE name = $1 AND type_ds = $2`
+	err := r.db.Get(&existingId, checkQuery, material.Name, material.TypeDS)
+	if err == nil {
+		// Материал уже существует
+		logger.Warning("Материал %s (тип ДС: %d) уже существует с ID: %d", material.Name, material.TypeDS, existingId)
+		return fmt.Errorf("материал с названием '%s' и типом ДС %d уже существует", material.Name, material.TypeDS)
+	}
+
+	// Проверяем, что это действительно ошибка "не найдено", а не другая ошибка
+	if err.Error() != "sql: no rows in result set" {
+		logger.Error("Ошибка при проверке существования материала: %v", err)
+		return fmt.Errorf("ошибка при проверке существования материала: %w", err)
+	}
+
+	query := `
+		INSERT INTO material (name, type_ds, storage)
+		VALUES ($1, $2, $3)
+		RETURNING id`
+
+	logger.Debug("Создание нового материала: %s (тип ДС: %d)", material.Name, material.TypeDS)
+	var id int
+	err = r.db.QueryRow(query, material.Name, material.TypeDS, material.Storage).Scan(&id)
+	if err != nil {
+		logger.Error("Ошибка при создании материала: %v", err)
+		return fmt.Errorf("ошибка при создании материала: %w", err)
+	}
+
+	logger.Info("Материал успешно создан с ID: %d", id)
+	return nil
+}
+
+func (r *Repository) GetAllMaterials() ([]models.Material, error) {
+	var materials []models.Material
+	query := `
+		SELECT id, name, type_ds, storage, created_at, updated_at
+		FROM material
+		ORDER BY name`
+
+	logger.Debug("Получение списка всех материалов")
+	err := r.db.Select(&materials, query)
+	if err != nil {
+		logger.Error("Ошибка при получении списка материалов: %v", err)
+		return nil, fmt.Errorf("ошибка при получении списка материалов: %w", err)
+	}
+
+	logger.Debug("Получено материалов: %d", len(materials))
+	return materials, nil
+}
+
+func (r *Repository) GetMaterialById(id int) (models.Material, error) {
+	var material models.Material
+	query := `
+		SELECT id, name, type_ds, storage, created_at, updated_at
+		FROM material
+		WHERE id = $1`
+
+	logger.Debug("Поиск материала по ID: %d", id)
+	err := r.db.Get(&material, query, id)
+	if err != nil {
+		logger.Error("Ошибка при получении материала по ID: %v", err)
+		return models.Material{}, fmt.Errorf("ошибка при получении материала: %w", err)
+	}
+
+	logger.Debug("Материал найден: %v", material)
+	return material, nil
+}
+
+func (r *Repository) GetMaterialByNameAndType(name string, typeDS int) (models.Material, error) {
+	var material models.Material
+	query := `
+		SELECT id, name, type_ds, storage, created_at, updated_at
+		FROM material
+		WHERE name = $1 AND type_ds = $2`
+
+	logger.Debug("Поиск материала по названию: %s и типу ДС: %d", name, typeDS)
+	err := r.db.Get(&material, query, name, typeDS)
+	if err != nil {
+		logger.Debug("Материал не найден: %s (тип ДС: %d)", name, typeDS)
+		return models.Material{}, fmt.Errorf("материал не найден: %w", err)
+	}
+
+	logger.Debug("Материал найден: %v", material)
+	return material, nil
+}
+
+func (r *Repository) AddMaterialQuantity(id int, quantity int) error {
+	// Сначала получаем текущее количество
+	var currentStorage int
+	selectQuery := `SELECT storage FROM material WHERE id = $1`
+	err := r.db.Get(&currentStorage, selectQuery, id)
+	if err != nil {
+		logger.Error("Ошибка при получении текущего количества материала ID %d: %v", id, err)
+		return fmt.Errorf("ошибка при получении текущего количества материала: %w", err)
+	}
+
+	logger.Debug("Текущее количество материала ID %d: %d, добавляем: %d", id, currentStorage, quantity)
+
+	query := `
+		UPDATE material
+		SET storage = storage + $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2`
+
+	logger.Debug("Выполнение SQL: %s с параметрами: quantity=%d, id=%d", query, quantity, id)
+	result, err := r.db.Exec(query, quantity, id)
+	if err != nil {
+		logger.Error("Ошибка при выполнении UPDATE для материала ID %d: %v", id, err)
+		return fmt.Errorf("ошибка при добавлении количества материала: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при получении количества обновленных строк: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("материал с ID %d не найден", id)
+	}
+
+	// Проверяем результат
+	var newStorage int
+	err = r.db.Get(&newStorage, selectQuery, id)
+	if err != nil {
+		logger.Error("Ошибка при проверке результата обновления материала ID %d: %v", id, err)
+	} else {
+		logger.Debug("Новое количество материала ID %d: %d", id, newStorage)
+	}
+
+	logger.Info("Количество материала успешно добавлено с %d до %d", currentStorage, newStorage)
+	return nil
+}
+
+func (r *Repository) SubtractMaterialQuantity(id int, quantity int) error {
+	// Сначала получаем текущее количество
+	var currentStorage int
+	selectQuery := `SELECT storage FROM material WHERE id = $1`
+	err := r.db.Get(&currentStorage, selectQuery, id)
+	if err != nil {
+		logger.Error("Ошибка при получении текущего количества материала ID %d: %v", id, err)
+		return fmt.Errorf("ошибка при получении текущего количества материала: %w", err)
+	}
+
+	logger.Debug("Текущее количество материала ID %d: %d, вычитаем: %d", id, currentStorage, quantity)
+
+	if currentStorage < quantity {
+		return fmt.Errorf("недостаточно материала на складе: текущий остаток %d, требуется вычесть %d", currentStorage, quantity)
+	}
+
+	query := `
+		UPDATE material
+		SET storage = storage - $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2`
+
+	logger.Debug("Выполнение SQL: %s с параметрами: quantity=%d, id=%d", query, quantity, id)
+	result, err := r.db.Exec(query, quantity, id)
+	if err != nil {
+		logger.Error("Ошибка при выполнении UPDATE для материала ID %d: %v", id, err)
+		return fmt.Errorf("ошибка при уменьшении количества материала: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при получении количества обновленных строк: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("материал с ID %d не найден", id)
+	}
+
+	// Проверяем результат
+	var newStorage int
+	err = r.db.Get(&newStorage, selectQuery, id)
+	if err != nil {
+		logger.Error("Ошибка при проверке результата обновления материала ID %d: %v", id, err)
+	} else {
+		logger.Debug("Новое количество материала ID %d: %d", id, newStorage)
+	}
+
+	logger.Info("Количество материала успешно уменьшено с %d до %d", currentStorage, newStorage)
+	return nil
+}
+
+func (r *Repository) UpdateMaterial(id int, material models.Material) error {
+	query := `
+		UPDATE material
+		SET name = $1, type_ds = $2, storage = $3, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $4`
+
+	logger.Debug("Обновление данных материала ID: %d", id)
+	result, err := r.db.Exec(query, material.Name, material.TypeDS, material.Storage, id)
+	if err != nil {
+		logger.Error("Ошибка при обновлении материала: %v", err)
+		return fmt.Errorf("ошибка при обновлении материала: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при получении количества обновленных строк: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("материал с ID %d не найден", id)
+	}
+
+	logger.Info("Данные материала успешно обновлены")
+	return nil
+}
+
+func (r *Repository) DeleteMaterial(id int) error {
+	// Сначала проверяем существование материала
+	var exists bool
+	checkQuery := `SELECT EXISTS(SELECT 1 FROM material WHERE id = $1)`
+	err := r.db.Get(&exists, checkQuery, id)
+	if err != nil {
+		logger.Error("Ошибка при проверке существования материала ID %d: %v", id, err)
+		return fmt.Errorf("ошибка при проверке существования материала: %w", err)
+	}
+
+	if !exists {
+		logger.Warning("Материал с ID %d не найден", id)
+		return fmt.Errorf("материал с ID %d не найден", id)
+	}
+
+	query := `DELETE FROM material WHERE id = $1`
+
+	logger.Debug("Удаление материала ID: %d", id)
+	result, err := r.db.Exec(query, id)
+	if err != nil {
+		logger.Error("Ошибка при удалении материала ID %d: %v", id, err)
+		return fmt.Errorf("ошибка при удалении материала: %w", err)
+	}
+
+	rowsAffected, err := result.RowsAffected()
+	if err != nil {
+		return fmt.Errorf("ошибка при получении количества удаленных строк: %w", err)
+	}
+	if rowsAffected == 0 {
+		return fmt.Errorf("материал с ID %d не найден", id)
+	}
+
+	logger.Info("Материал ID %d успешно удален", id)
+	return nil
+}
+
 func (r *Repository) GetOrderStatistics() (models.Statistics, error) {
 	var stats models.Statistics
 
@@ -798,155 +1103,6 @@ func (r *Repository) getOrderServices(orderId int) ([]models.OrderService, error
 	}
 
 	return services, nil
-}
-
-func (r *Repository) GetMaterialCard(id int) (models.MaterialCard, error) {
-	var materialCard models.MaterialCard
-	query := `
-		SELECT id, "Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15"
-		FROM material_card
-		WHERE id = $1`
-
-	err := r.db.Get(&materialCard, query, id)
-	if err != nil {
-		logger.Error("Ошибка при получении материала карты: %v", err)
-		return models.MaterialCard{}, fmt.Errorf("ошибка при получении материала карты: %w", err)
-	}
-
-	return materialCard, nil
-}
-
-func (r *Repository) CreateMaterialCard(materialCard models.MaterialCard) (int, error) {
-	var id int
-	query := `
-		INSERT INTO material_card ("Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15")
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-		RETURNING id`
-
-	err := r.db.QueryRow(query, materialCard.Rs25, materialCard.R19, materialCard.R20, materialCard.R25, materialCard.R251, materialCard.R13, materialCard.R15, materialCard.Foot9, materialCard.Foot12, materialCard.Foot15).Scan(&id)
-	if err != nil {
-		logger.Error("Ошибка при создании материала карты: %v", err)
-		return 0, fmt.Errorf("ошибка при создании материала карты: %w", err)
-	}
-
-	return id, nil
-}
-
-func (r *Repository) UpdateMaterialCard(id int, materialCard models.MaterialCard) error {
-	query := `
-		UPDATE material_card
-		SET "Rs25" = $1, "R19" = $2, "R20" = $3, "R25" = $4, "R251" = $5, "R13" = $6, "R15" = $7, "Foot9" = $8, "Foot12" = $9, "Foot15" = $10
-		WHERE id = $11`
-
-	logger.Debug("Обновление материала карты ID: %d", id)
-	_, err := r.db.Exec(query, materialCard.Rs25, materialCard.R19, materialCard.R20, materialCard.R25, materialCard.R251, materialCard.R13, materialCard.R15, materialCard.Foot9, materialCard.Foot12, materialCard.Foot15, id)
-	if err != nil {
-		logger.Error("Ошибка при обновлении материала карты: %v", err)
-		return fmt.Errorf("ошибка при обновлении материала карты: %w", err)
-	}
-
-	return nil
-}
-
-func (r *Repository) DeleteMaterialCard(id int) error {
-	query := `DELETE FROM material_card WHERE id = $1`
-
-	logger.Debug("Удаление материала карты ID: %d", id)
-	result, err := r.db.Exec(query, id)
-	if err != nil {
-		logger.Error("Ошибка при удалении материала карты: %v", err)
-		return fmt.Errorf("ошибка при удалении материала карты: %w", err)
-	}
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("ошибка при получении количества удаленных строк: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("материал карты с ID %d не найден", id)
-	}
-
-	logger.Info("Материал карты успешно удален")
-	return nil
-}
-
-func (r *Repository) GetAllMaterialCards() ([]models.MaterialCard, error) {
-	var materialCards []models.MaterialCard
-	query := `
-		SELECT id, "Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15"
-		FROM material_card
-	`
-
-	err := r.db.Select(&materialCards, query)
-	if err != nil {
-		logger.Error("Ошибка при получении всех материалов карты: %v", err)
-		return nil, fmt.Errorf("ошибка при получении всех материалов карты: %w", err)
-	}
-
-	return materialCards, nil
-}
-
-// вычесть из склада(storage одна запись) материалы тех карты по id
-func (r *Repository) SpellMaterial(id int) error {
-	materialCard, err := r.GetMaterialCard(id)
-	if err != nil {
-		return fmt.Errorf("ошибка при получении материала карты: %w", err)
-	}
-
-	query := `
-		UPDATE storage
-		SET "Rs25" = "Rs25" - $1, "R19" = "R19" - $2, "R20" = "R20" - $3, "R25" = "R25" - $4, "R251" = "R251" - $5, "R13" = "R13" - $6, "R15" = "R15" - $7, "Foot9" = "Foot9" - $8, "Foot12" = "Foot12" - $9, "Foot15" = "Foot15" - $10
-		WHERE id = $11
-	`
-
-	result, err := r.db.Exec(query, materialCard.Rs25, materialCard.R19, materialCard.R20,
-		materialCard.R25, materialCard.R251, materialCard.R13, materialCard.R15, materialCard.Foot9,
-		materialCard.Foot12, materialCard.Foot15, id)
-
-	rowsAffected, err := result.RowsAffected()
-	if err != nil {
-		return fmt.Errorf("ошибка при получении количества удаленных строк: %w", err)
-	}
-
-	if rowsAffected == 0 {
-		return fmt.Errorf("материал карты с ID %d не найден", id)
-	}
-
-	return nil
-}
-
-func (r *Repository) GetStorage() (models.Storage, error) {
-	var storage models.Storage
-	query := `
-		SELECT id, "Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15"
-		FROM storage
-		WHERE id = 1
-	`
-
-	err := r.db.Get(&storage, query)
-	if err != nil {
-		logger.Error("Ошибка при получении склада: %v", err)
-		return models.Storage{}, fmt.Errorf("ошибка при получении склада: %w", err)
-	}
-
-	return storage, nil
-}
-
-func (r *Repository) AddDelivery(delivery models.Storage) error {
-	// добавить ко всем полям delivery.Rs25, delivery.R19, delivery.R20, delivery.R25, delivery.R251, delivery.R13, delivery.R15, delivery.Foot9, delivery.Foot12, delivery.Foot15
-	query := `
-		UPDATE storage
-		SET "Rs25" = "Rs25" + $1, "R19" = "R19" + $2, "R20" = "R20" + $3, "R25" = "R25" + $4, "R251" = "R251" + $5, "R13" = "R13" + $6, "R15" = "R15" + $7, "Foot9" = "Foot9" + $8, "Foot12" = "Foot12" + $9, "Foot15" = "Foot15" + $10
-		WHERE id = 1
-	`
-	_, err := r.db.Exec(query, delivery.Rs25, delivery.R19, delivery.R20, delivery.R25, delivery.R251, delivery.R13, delivery.R15, delivery.Foot9, delivery.Foot12, delivery.Foot15)
-	if err != nil {
-		logger.Error("Ошибка при добавлении материалов на склад: %v", err)
-		return fmt.Errorf("ошибка при добавлении материалов на склад: %w", err)
-	}
-	logger.Debug("Материалы успешно добавлены на склад")
-	return nil
 }
 
 func (r *Repository) GetClientTypes() ([]string, error) {
@@ -995,8 +1151,6 @@ func (r *Repository) GetWorkerByUserId(userId int) (models.Worker, error) {
 	err := r.db.Get(&worker, query, userId)
 	return worker, err
 }
-
-
 
 func (r *Repository) CarExists(number string) (bool, error) {
 	var exists bool

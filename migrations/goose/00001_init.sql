@@ -51,20 +51,14 @@ CREATE TABLE IF NOT EXISTS contracts (
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE TABLE IF NOT EXISTS material_card (
+CREATE TABLE IF NOT EXISTS material (
     id SERIAL PRIMARY KEY,
-    "Rs25"       int,       
-	"R19"        int,       
-	"R20"        int,       
-	"R25"        int,       
-	"R251"       int,       
-	"R13"        int,      
-	"R15"        int,      
-	"Foot9"      int,       
-	"Foot12"     int,       
-	"Foot15"     int,       
+    name VARCHAR(255) NOT NULL,
+    type_ds INTEGER NOT NULL,
+    storage INTEGER NOT NULL,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(name, type_ds)
 );
 
 CREATE TABLE IF NOT EXISTS clients (
@@ -101,13 +95,13 @@ CREATE TABLE IF NOT EXISTS services (
     name VARCHAR(255) NOT NULL,
     price INTEGER NOT NULL,
     contract_id int NOT NULL REFERENCES contracts(id),
-    material_card int NOT NULL REFERENCES material_card(id),
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
 
 CREATE TABLE IF NOT EXISTS orders (
     id SERIAL PRIMARY KEY,
+    status VARCHAR(50) NOT NULL DEFAULT 'запланирован',
     worker_id INTEGER REFERENCES workers(id) ON DELETE SET NULL,
     client_id INTEGER REFERENCES clients(id) ON DELETE SET NULL,
     vehicle_number VARCHAR(20) NOT NULL,
@@ -125,38 +119,6 @@ CREATE TABLE IF NOT EXISTS order_services (
     service_description TEXT,
     wheel_position VARCHAR(50),
     price DECIMAL(10,2) NOT NULL,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS storage ( -- склад
-    id SERIAL PRIMARY KEY,
-    "Rs25"       int DEFAULT 0,       
-	"R19"        int DEFAULT 0,       
-	"R20"        int DEFAULT 0,       
-	"R25"        int DEFAULT 0,       
-	"R251"       int DEFAULT 0,       
-	"R13"        int DEFAULT 0,      
-	"R15"        int DEFAULT 0,      
-	"Foot9"      int DEFAULT 0,       
-	"Foot12"     int DEFAULT 0,       
-	"Foot15"     int DEFAULT 0,       
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
-
-CREATE TABLE IF NOT EXISTS material_delivery ( -- поставка материалов
-    id SERIAL PRIMARY KEY,
-    "Rs25"       int,       
-	"R19"        int,       
-	"R20"        int,       
-	"R25"        int,       
-	"R251"       int,       
-	"R13"        int,      
-	"R15"        int,      
-	"Foot9"      int,       
-	"Foot12"     int,       
-	"Foot15"     int,       
     created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
 );
@@ -186,16 +148,10 @@ CREATE INDEX IF NOT EXISTS idx_cars_number ON cars(number);
 CREATE INDEX IF NOT EXISTS idx_orders_vehicle_number ON orders(vehicle_number);
 CREATE INDEX IF NOT EXISTS idx_orders_payment_method ON orders(payment_method);
 CREATE INDEX IF NOT EXISTS idx_orders_client_id ON orders(client_id);
+CREATE INDEX IF NOT EXISTS idx_material_name_type ON material(name, type_ds);
 CREATE INDEX IF NOT EXISTS idx_orders_worker_id ON orders(worker_id);
 
--- Добавляем начальную запись в storage
-INSERT INTO storage ("Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15") 
-VALUES (0, 0, 0, 0, 0, 0, 0, 0, 0, 0) 
-ON CONFLICT DO NOTHING;
 
--- Добавляем базовую материальную карту
-INSERT INTO material_card ("Rs25", "R19", "R20", "R25", "R251", "R13", "R15", "Foot9", "Foot12", "Foot15") 
-VALUES (0, 0, 0, 0, 0, 0, 0, 0, 0, 0);
 
 -- Добавляем базовый договор для налички
 INSERT INTO contracts (number, description, client_type, client_company_name, client_company_address, 
@@ -205,9 +161,7 @@ VALUES ('CASH-001', 'Договор для наличных расчетов', '
         'Не указан', '+7-000-000-0000', 'cash@example.com', '0000000000', 
         '000000000', '0000000000000');
 
--- Добавляем специальный сервис для дополнительных услуг (ID=1)
-INSERT INTO services (name, price, contract_id, material_card) 
-VALUES ('Дополнительная услуга', 0, 1, 1);
+
 
 -- Добавляем базового клиента для налички
 INSERT INTO clients (name, owner_phone, manager_phone, client_type, contract_id) 
@@ -223,11 +177,9 @@ DROP TABLE IF EXISTS clients_cars;
 DROP TABLE IF EXISTS cars;
 DROP TABLE IF EXISTS clients;
 DROP TABLE IF EXISTS services;
-DROP TABLE IF EXISTS material_card;
 DROP TABLE IF EXISTS contracts;
+DROP TABLE IF EXISTS material;
 DROP TABLE IF EXISTS workers;
 DROP TABLE IF EXISTS users;
-DROP TABLE IF EXISTS material_delivery;
-DROP TABLE IF EXISTS storage;
-DROP TABLE IF EXISTS onliene_date;
+DROP TABLE IF EXISTS online_date;
 -- +goose StatementEnd 
