@@ -1,11 +1,15 @@
 package service
 
-import "go-hinomontaj/models"
+import (
+	"go-hinomontaj/models"
+	"time"
+)
 
 type OrderService interface {
 	Create(order models.Order) (int, error)
 	GetAll() ([]models.Order, error)
 	GetByWorkerId(workerId int) ([]models.Order, error)
+	GetByWorkerIdAndDateRange(workerId int, start, end time.Time) ([]models.Order, error)
 	Update(id int, order models.Order) error
 	Delete(id int) error
 	GetStatistics() (models.Statistics, error)
@@ -33,6 +37,10 @@ func (s *OrderServiceImpl) GetByWorkerId(workerId int) ([]models.Order, error) {
 	return s.repo.GetOrdersByWorkerId(workerId)
 }
 
+func (s *OrderServiceImpl) GetByWorkerIdAndDateRange(workerId int, start, end time.Time) ([]models.Order, error) {
+	return s.repo.GetOrdersByWorkerIdAndDateRange(workerId, start, end)
+}
+
 func (s *OrderServiceImpl) Update(id int, order models.Order) error {
 	return s.repo.UpdateOrder(id, order)
 }
@@ -45,6 +53,6 @@ func (s *OrderServiceImpl) Delete(id int) error {
 	return s.repo.DeleteOrder(id)
 }
 
-//func (s *OrderServiceImpl) GetStatistics() (models.Statistics, error) {
-//	return s.repo.GetOrderStatistics()
-//}
+func (s *OrderServiceImpl) GetStatistics() (models.Statistics, error) {
+	return s.repo.GetOrderStatistics()
+}

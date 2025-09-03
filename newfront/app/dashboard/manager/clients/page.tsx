@@ -33,7 +33,8 @@ export default function ClientsPage() {
     try {
       setLoading(true)
       const data = await clientsApi.getAll()
-      setClients(data)
+      const uniqueById = Array.from(new Map(data.map((c: Client) => [c.id, c])).values())
+      setClients(uniqueById)
     } catch (error) {
       toast({
         title: "Ошибка",

@@ -57,7 +57,7 @@ type Worker interface {
 	GetBonuses(workerID int) ([]models.PenaltyOrBonus, error)
 	AddPenalty(penalty models.PenaltyOrBonus) error
 	GetPenalties(workerID int) ([]models.PenaltyOrBonus, error)
-	Salary(workerID int, start time.Time) (int, error)
+	Salary(workerID int, start time.Time) (float64, error)
 }
 
 type Client interface {
@@ -83,9 +83,11 @@ type Order interface {
 	Create(order models.Order) (int, error)
 	GetAll() ([]models.Order, error)
 	GetByWorkerId(workerId int) ([]models.Order, error)
+	GetByWorkerIdAndDateRange(workerId int, start, end time.Time) ([]models.Order, error)
 	Update(id int, order models.Order) error
 	UpdateStatus(id int, status string) error
 	Delete(id int) error
+	GetStatistics() (models.Statistics, error)
 }
 
 type Service interface {
@@ -172,9 +174,11 @@ type Repository interface {
 	CreateOrder(order models.Order) (int, error)
 	GetAllOrders() ([]models.Order, error)
 	GetOrdersByWorkerId(workerId int) ([]models.Order, error)
+	GetOrdersByWorkerIdAndDateRange(workerId int, start, end time.Time) ([]models.Order, error)
 	UpdateOrder(id int, order models.Order) error
 	UpdateOrderStatus(id int, status string) error
 	DeleteOrder(id int) error
+	GetOrderStatistics() (models.Statistics, error)
 
 	// OnlineDate
 	OnlineDate(date *models.OnlineDate) error

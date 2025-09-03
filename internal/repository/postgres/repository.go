@@ -696,10 +696,10 @@ func (r *Repository) GetAllOrders() ([]models.Order, error) {
 func (r *Repository) GetOrdersByWorkerId(workerId int) ([]models.Order, error) {
 	var orders []models.Order
 	query := `
-		SELECT o.id, o.status, o.worker_id, o.client_id, o.vehicle_number, o.payment_method, o.total_amount,
-			   o.created_at, o.updated_at
-		FROM orders o
-		WHERE o.worker_id = $1`
+		SELECT id, status, worker_id, client_id, vehicle_number, payment_method, total_amount, created_at, updated_at
+		FROM orders
+		WHERE worker_id = $1
+		ORDER BY created_at DESC`
 
 	logger.Debug("Получение заказов для работника ID: %d", workerId)
 	err := r.db.Select(&orders, query, workerId)
@@ -717,7 +717,26 @@ func (r *Repository) GetOrdersByWorkerId(workerId int) ([]models.Order, error) {
 		orders[i].Services = services
 	}
 
-	logger.Debug("Получено заказов: %d", len(orders))
+	logger.Debug("Получено заказов для работника ID %d: %d", workerId, len(orders))
+	return orders, nil
+}
+
+func (r *Repository) GetOrdersByWorkerIdAndDateRange(workerId int, start, end time.Time) ([]models.Order, error) {
+	var orders []models.Order
+	query := `
+		SELECT id, status, worker_id, client_id, vehicle_number, payment_method, total_amount, created_at, updated_at
+		FROM orders
+		WHERE worker_id = $1 AND created_at >= $2 AND created_at < $3
+		ORDER BY created_at DESC`
+
+	logger.Debug("Получение заказов для работника ID: %d в период с %v по %v", workerId, start, end)
+	err := r.db.Select(&orders, query, workerId, start, end)
+	if err != nil {
+		logger.Error("Ошибка при получении заказов работника за период: %v", err)
+		return nil, fmt.Errorf("ошибка при получении заказов работника за период: %w", err)
+	}
+
+	logger.Debug("Получено заказов для работника ID %d за период: %d", workerId, len(orders))
 	return orders, nil
 }
 

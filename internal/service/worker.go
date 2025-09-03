@@ -81,7 +81,7 @@ func (s *WorkerServiceImpl) GetPenalties(workerID int) ([]models.PenaltyOrBonus,
 }
 
 // считает зп за сутки +24 часа от старт для рбаотника, пока если схема не известна возвращает просто всю выручку с заказов
-func (s *WorkerServiceImpl) Salary(workerID int, start time.Time) (int, error) {
+func (s *WorkerServiceImpl) Salary(workerID int, start time.Time) (float64, error) {
 	stats, err := s.GetStatistics(workerID, start, start.Add(24*time.Hour))
 	if err != nil {
 		return 0, err
@@ -92,11 +92,11 @@ func (s *WorkerServiceImpl) Salary(workerID int, start time.Time) (int, error) {
 	}
 
 	if stats.SalarySchema == "Процентная" {
-		return stats.TotalRevenue * (worker.Salary / 100), nil // делим на 100 чтоб получить процент
+		return stats.TotalRevenue * (float64(worker.Salary) / 100.0), nil // делим на 100 чтоб получить процент
 	}
 
 	if stats.SalarySchema == "Фиксированная" {
-		return worker.Salary, nil // если нет схемы то просто возвращаем сумму
+		return float64(worker.Salary), nil // если нет схемы то просто возвращаем сумму
 	}
 
 	return stats.TotalRevenue, nil // если нет схемы то просто возвращаем сумму

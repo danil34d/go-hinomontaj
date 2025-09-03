@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command"
+import { Plus, Minus } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { ordersApi, clientsApi, servicesApi, workersApi } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
@@ -87,6 +90,7 @@ export function WorkerOrderFormDialog({ open, onOpenChange, onOrderCreated }: Wo
   const [workers, setWorkers] = useState<Worker[]>([])
   const [whooseCarClients, setWhooseCarClients] = useState<Client[]>([])
   const [contractComparisons, setContractComparisons] = useState<ContractComparison[]>([])
+  const [serviceComboboxOpen, setServiceComboboxOpen] = useState(false)
   
   // Состояния загрузки
   const [loading, setLoading] = useState(false)
@@ -223,20 +227,41 @@ export function WorkerOrderFormDialog({ open, onOpenChange, onOrderCreated }: Wo
     setStep(4)
   }
 
-  const handleServiceToggle = (serviceId: string, price: number) => {
+  const incrementService = (serviceId: number, price: number) => {
     setSelectedServices(prev => {
-      const newServices = { ...prev }
-      if (newServices[serviceId]) {
-        delete newServices[serviceId]
+      const counts: {[key: string]: number} = { ...prev }
+      counts[String(serviceId)] = (counts[String(serviceId)] || 0) + 1
+      return counts
+    })
+  }
+
+  const decrementService = (serviceId: number) => {
+    setSelectedServices(prev => {
+      const counts = { ...prev }
+      const key = String(serviceId)
+      if (!counts[key]) return prev
+      if (counts[key] <= 1) {
+        delete counts[key]
       } else {
-        newServices[serviceId] = price
+        counts[key] = counts[key] - 1
       }
-      return newServices
+      return counts
+    })
+  }
+
+  const removeAllOfService = (serviceId: number) => {
+    setSelectedServices(prev => {
+      const counts = { ...prev }
+      delete counts[String(serviceId)]
+      return counts
     })
   }
 
   const calculateTotal = () => {
-    return Object.values(selectedServices).reduce((sum, price) => sum + price, 0)
+    return Object.entries(selectedServices).reduce((sum, [id, qty]) => {
+      const svc = services.find(s => s.id === parseInt(id))
+      return sum + (svc ? svc.price * Number(qty) : 0)
+    }, 0)
   }
 
   const handleSubmit = async () => {
@@ -304,14 +329,15 @@ export function WorkerOrderFormDialog({ open, onOpenChange, onOrderCreated }: Wo
         payment_method: clientType === "НАЛИЧКА" ? paymentMethod : "contract",
         worker_id: parseInt(workerId),
         total_amount: calculateTotal(),
-        services: Object.entries(selectedServices).map(([serviceId, price]) => {
+        services: Object.entries(selectedServices).flatMap(([serviceId, qty]) => {
           const service = services.find(s => s.id === parseInt(serviceId))
-          return {
+          const count = Number(qty)
+          return Array.from({ length: count }, () => ({
             service_id: parseInt(serviceId),
             description: service?.name || "Услуга",
             wheel_position: wheelPosition,
-            price: price
-          }
+            price: service?.price || 0
+          }))
         })
       }
 
@@ -552,25 +578,66 @@ export function WorkerOrderFormDialog({ open, onOpenChange, onOrderCreated }: Wo
               </SelectContent>
             </Select>
 
-            <Label>Услуги</Label>
-            <div className="space-y-2 max-h-40 overflow-y-auto">
-              {services.map((service) => (
-                <Card 
-                  key={service.id} 
-                  className={`cursor-pointer transition-colors ${
-                    selectedServices[service.id] ? 'ring-2 ring-primary' : 'hover:bg-muted'
-                  }`}
-                  onClick={() => handleServiceToggle(service.id.toString(), service.price)}
-                >
-                  <CardContent className="p-3">
-                    <div className="flex justify-between items-center">
-                      <span className="font-medium">{service.name}</span>
-                      <span className="font-bold">{service.price} ₽</span>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-            </div>
+            <Label>Добавить услугу</Label>
+            <Popover open={serviceComboboxOpen} onOpenChange={setServiceComboboxOpen}>
+              <PopoverTrigger asChild>
+                <Button variant="outline" role="combobox" aria-expanded={serviceComboboxOpen} className="w-full justify-between">
+                  Выберите услугу для добавления
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent className="w-[360px] p-0">
+                <Command>
+                  <CommandInput placeholder="Поиск услуги..." />
+                  <CommandList>
+                    <CommandEmpty>Ничего не найдено</CommandEmpty>
+                    <CommandGroup>
+                      {services.map((service) => (
+                        <CommandItem key={service.id} value={service.name} onSelect={() => { incrementService(service.id, service.price); setServiceComboboxOpen(false) }}>
+                          <div className="flex w-full items-center justify-between">
+                            <span>{service.name}</span>
+                            <span className="text-muted-foreground">{service.price} ₽</span>
+                          </div>
+                        </CommandItem>
+                      ))}
+                    </CommandGroup>
+                  </CommandList>
+                </Command>
+              </PopoverContent>
+            </Popover>
+
+            {/* Корзина услуг с количеством */}
+            {Object.keys(selectedServices).length > 0 && (
+              <div className="space-y-2">
+                <Label>Корзина услуг</Label>
+                <div className="space-y-2">
+                  {Object.entries(selectedServices).map(([id, qty]) => {
+                    const svc = services.find(s => s.id === parseInt(id))
+                    if (!svc) return null
+                    return (
+                      <div key={id} className="flex items-center justify-between rounded-lg border p-3">
+                        <div>
+                          <div className="font-medium">{svc.name}</div>
+                          <div className="text-sm text-muted-foreground">{svc.price} ₽ за единицу</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button type="button" variant="outline" size="icon" onClick={() => decrementService(svc.id)}>
+                            <Minus className="h-4 w-4" />
+                          </Button>
+                          <span className="w-8 text-center">{qty}</span>
+                          <Button type="button" variant="outline" size="icon" onClick={() => incrementService(svc.id, svc.price)}>
+                            <Plus className="h-4 w-4" />
+                          </Button>
+                          <span className="ml-4 font-medium">{Number(qty) * svc.price} ₽</span>
+                          <Button type="button" variant="ghost" size="sm" onClick={() => removeAllOfService(svc.id)}>
+                            Удалить
+                          </Button>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label>Комментарий (необязательно)</Label>
@@ -581,14 +648,18 @@ export function WorkerOrderFormDialog({ open, onOpenChange, onOrderCreated }: Wo
               />
             </div>
 
-            {Object.keys(selectedServices).length > 0 && (
-              <div className="p-3 bg-muted rounded-md">
-                <div className="font-medium">Итого: {calculateTotal()} ₽</div>
-                <div className="text-sm text-muted-foreground">
-                  Выбрано услуг: {Object.keys(selectedServices).length}
+            {Object.keys(selectedServices).length > 0 && (() => {
+              const total = Object.entries(selectedServices).reduce((sum, [id, qty]) => {
+                const svc = services.find(s => s.id === parseInt(id))
+                return sum + (svc ? svc.price * Number(qty) : 0)
+              }, 0)
+              return (
+                <div className="p-3 bg-muted rounded-md">
+                  <div className="font-medium">Итого: {total} ₽</div>
+                  <div className="text-sm text-muted-foreground">Позиции: {Object.keys(selectedServices).length}</div>
                 </div>
-              </div>
-            )}
+              )
+            })()}
 
             <div className="flex gap-2">
               <Button variant="outline" onClick={() => setStep(4)} className="flex-1">

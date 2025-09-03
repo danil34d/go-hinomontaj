@@ -48,7 +48,7 @@ export function ClientVehiclesDialog({ open, onOpenChange, clientId, clientName 
         throw new Error("Не удалось загрузить список машин")
       }
       const data = await response.json()
-      setVehicles(data)
+      setVehicles(Array.isArray(data) ? data : Array.isArray(data?.vehicles) ? data.vehicles : [])
     } catch (error) {
       console.error("Ошибка при загрузке машин:", error)
       toast.error("Не удалось загрузить список машин")
@@ -168,14 +168,14 @@ export function ClientVehiclesDialog({ open, onOpenChange, clientId, clientName 
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {vehicles.map((vehicle) => (
+                  {(vehicles ?? []).map((vehicle) => (
                     <TableRow key={vehicle.id}>
                       <TableCell>{vehicle.number}</TableCell>
                       <TableCell>{vehicle.model}</TableCell>
                       <TableCell>{vehicle.year}</TableCell>
                     </TableRow>
                   ))}
-                  {vehicles.length === 0 && (
+                  {(vehicles ?? []).length === 0 && (
                     <TableRow>
                       <TableCell colSpan={3} className="text-center text-muted-foreground">
                         Нет данных

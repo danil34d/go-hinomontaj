@@ -9,14 +9,15 @@ const nextConfig = {
   images: {
     unoptimized: true,
   },
-  async rewrites() {
-    return [
-      {
-        source: '/api/:path*',
-        destination: 'http://backend:8080/api/:path*',
-      },
-    ]
-  },
+  // Убираем rewrites для production, используем переменную окружения
+  // async rewrites() {
+  //   return [
+  //     {
+  //       source: '/api/:path*',
+  //       destination: 'http://backend:8080/api/:path*',
+  //     },
+  //   ]
+  // },
 }
 
 export default nextConfig

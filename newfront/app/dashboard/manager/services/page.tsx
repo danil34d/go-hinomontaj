@@ -145,14 +145,13 @@ export default function ServicesPage() {
                     Договор: {contract.name}
                   </TableHead>
                 ))}
-                <TableHead className="min-w-[150px]">Технологическая карта</TableHead>
                 <TableHead className="w-[100px]">Действия</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredServices.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={uniqueContracts.length + 3} className="text-center py-8">
+                  <TableCell colSpan={uniqueContracts.length + 2} className="text-center py-8">
                     Услуги не найдены
                   </TableCell>
                 </TableRow>
@@ -167,9 +166,6 @@ export default function ServicesPage() {
                         {getServicePrice(service, contract.id)}
                       </TableCell>
                     ))}
-                    <TableCell>
-                      {service.material_card || "-"}
-                    </TableCell>
                     <TableCell>
                       <DropdownMenu>
                         <DropdownMenuTrigger asChild>

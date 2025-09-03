@@ -9,6 +9,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea"
 import { useToast } from "@/components/ui/use-toast"
 import { ordersApi, clientsApi, servicesApi, workersApi, materialsApi, fetchWithAuth } from "@/lib/api"
+import type { OrderService as ApiOrderService } from "@/lib/api"
 import { Badge } from "@/components/ui/badge"
 import { X, Info } from "lucide-react"
 import ClientComparisonDialog from "./client-comparison-dialog"
@@ -71,6 +72,12 @@ interface FormData {
     material_id: number
     quantity: number
   }>
+}
+
+interface ExistingOrderServicePrefill {
+  service_id: number
+  description: string
+  price: number
 }
 
 export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderFormDialogProps) {
@@ -141,11 +148,25 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
 
   // Инициализация данных при открытии диалога
   useEffect(() => {
-    if (open) {
-      fetchInitialData()
-      resetForm()
+    if (!open) return
+    if (order) {
+      setFormData({
+        client_id: order.client_id ?? null,
+        worker_id: String(order.worker_id ?? ""),
+        vehicle_number: order.vehicle_number ?? "",
+        payment_method: order.payment_method ?? "",
+        total_amount: Number(order.total_amount ?? 0),
+        description: "",
+        status: order.status ?? "запланирован",
+        services: Array.isArray(order.services)
+          ? order.services.map((s: ApiOrderService): ExistingOrderServicePrefill => ({ service_id: s.service_id, description: s.description, price: Number(s.price) }))
+          : [],
+        materials: [],
+      })
+    } else {
+      setFormData(prev => ({ ...prev }))
     }
-  }, [open])
+  }, [open, order])
 
   // Сброс формы при изменении типа клиента
   useEffect(() => {
@@ -496,7 +517,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       const orderData = {
         client_id: selectedClientType === "НАЛИЧКА" ? 1 : formData.client_id,
         worker_id: parseInt(formData.worker_id),
-        vehicle_number: formData.vehicle_number || "НЕ УКАЗАН",
+        vehicle_number: formData.vehicle_number || "",
         payment_method: formData.payment_method || (selectedClientType === "НАЛИЧКА" ? "cash" : "contract"),
         total_amount: formData.total_amount,
         description: formData.description,
@@ -505,16 +526,23 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
           service_id: service.service_id,
           description: service.description,
           price: service.price,
-          wheel_position: "НЕ УКАЗАН"
+          wheel_position: ""
         }))
       }
 
+      if (order?.id) {
+        await ordersApi.update(order.id, orderData)
+        toast({
+          title: "Успешно",
+          description: "Заказ обновлен",
+        })
+      } else {
       await ordersApi.createManager(orderData)
-      
       toast({
         title: "Успешно",
         description: "Заказ создан и расходники вычтены со склада",
       })
+      }
       
       onSuccess()
       onOpenChange(false)
@@ -523,7 +551,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       toast({
         variant: "destructive",
         title: "Ошибка",
-        description: error.message || "Не удалось создать заказ",
+        description: error.message || (order?.id ? "Не удалось обновить заказ" : "Не удалось создать заказ"),
       })
     } finally {
       setSubmitting(false)
@@ -559,7 +587,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
       <Dialog open={open} onOpenChange={onOpenChange}>
         <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Создание нового заказа</DialogTitle>
+            <DialogTitle>{order ? "Редактирование заказа" : "Создание нового заказа"}</DialogTitle>
             <DialogDescription>
               Заполните форму для создания нового заказа
             </DialogDescription>
@@ -912,7 +940,7 @@ export function OrderFormDialog({ open, onOpenChange, order, onSuccess }: OrderF
                   Отмена
                 </Button>
                 <Button type="submit" disabled={submitting}>
-                  {submitting ? "Создание..." : "Создать заказ"}
+                  {submitting ? (order ? "Сохранение..." : "Создание...") : (order ? "Редактировать" : "Создать заказ")}
                 </Button>
               </div>
             </form>

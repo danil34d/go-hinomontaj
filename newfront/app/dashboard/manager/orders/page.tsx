@@ -227,7 +227,7 @@ export default function ManagerOrdersPage() {
             <TableHead>Клиент</TableHead>
             <TableHead>Тип клиента</TableHead>
             <TableHead>Автомобиль</TableHead>
-            <TableHead>Услуги</TableHead>
+            <TableHead>Договор</TableHead>
             <TableHead>Сумма</TableHead>
             <TableHead>Оплата</TableHead>
             <TableHead>Создан</TableHead>
@@ -250,9 +250,6 @@ export default function ManagerOrdersPage() {
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="font-medium">{order.client?.name || "Н/Д"}</span>
-                    <span className="text-sm text-muted-foreground">
-                      {order.client?.car_numbers?.join(", ") || "Нет автомобилей"}
-                    </span>
                   </div>
                 </TableCell>
                 <TableCell>
@@ -261,21 +258,7 @@ export default function ManagerOrdersPage() {
                   </Badge>
                 </TableCell>
                 <TableCell>{order.vehicle_number}</TableCell>
-                <TableCell>
-                  <div className="flex flex-col gap-1">
-                    {order.services?.map((service) => (
-                      <div key={`${order.id}-${service.service_id}`} className="flex items-center gap-1">
-                        <Badge variant="secondary">
-                          {service.service_description}
-                        </Badge>
-                        <span className="text-sm text-muted-foreground">
-                          {service.wheel_position && `(${service.wheel_position})`}
-                        </span>
-                        <span className="text-sm">{service.price} ₽</span>
-                      </div>
-                    ))}
-                  </div>
-                </TableCell>
+                <TableCell>{order.client?.contract_id ? `#${order.client.contract_id}` : "Н/Д"}</TableCell>
                 <TableCell>
                   <div className="flex flex-col">
                     <span className="font-medium">{order.total_amount} ₽</span>

@@ -271,6 +271,16 @@ export const workersApi = {
     }
     return response.json()
   },
+
+  // Получить статистику сотрудника
+  getStatistics: async (workerId: number, startDate: string, endDate: string) => {
+    const response = await fetchWithAuth(`/api/manager/workers/statistics/${workerId}?start=${startDate}&end=${endDate}`)
+    if (!response.ok) {
+      const error = await response.json()
+      throw new Error(error.error || "Не удалось получить статистику сотрудника")
+    }
+    return response.json()
+  },
 }
 
 // API для работы с типами клиентов

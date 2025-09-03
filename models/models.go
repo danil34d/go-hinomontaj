@@ -160,11 +160,11 @@ type Worker struct {
 }
 
 type Statistics struct {
-	TotalOrders       int     `json:"total_orders"`
-	TotalRevenue      float64 `json:"total_revenue"`
-	TotalWorkers      int     `json:"total_workers"`
-	TotalClients      int     `json:"total_clients"`
-	AverageOrderValue float64 `json:"average_order_value"`
+	TotalOrders       int     `json:"total_orders" db:"total_orders"`
+	TotalRevenue      float64 `json:"total_revenue" db:"total_revenue"`
+	TotalWorkers      int     `json:"total_workers" db:"total_workers"`
+	TotalClients      int     `json:"total_clients" db:"total_clients"`
+	AverageOrderValue float64 `json:"average_order_value" db:"average_order_value"`
 }
 
 type WorkerStatistics struct {
@@ -174,11 +174,11 @@ type WorkerStatistics struct {
 	WorkerPhone   string `json:"worker_phone" db:"worker_phone"`
 	SalarySchema  string `json:"salary_schema" db:"salary_schema"`
 
-	TotalOrders    int `json:"total_orders" db:"total_orders"`
-	TotalRevenue   int `json:"total_revenue" db:"total_revenue"`
-	TotalBonus     int `json:"total_bonus" db:"total_bonus"`
-	TotalPenalties int `json:"total_penalties" db:"total_penalties"`
-	TotalSalary    int `json:"total_salary" db:"total_salary"`
+	TotalOrders    int     `json:"total_orders" db:"total_orders"`
+	TotalRevenue   float64 `json:"total_revenue" db:"total_revenue"`
+	TotalBonus     int     `json:"total_bonus" db:"total_bonus"`
+	TotalPenalties int     `json:"total_penalties" db:"total_penalties"`
+	TotalSalary    float64 `json:"total_salary" db:"total_salary"`
 }
 
 type PenaltyOrBonus struct {

@@ -80,7 +80,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 	{
 		worker.GET("", h.GetMyOrders)
 		worker.POST("", h.CreateOrder)
-		//worker.GET("/statistics", h.GetWorkerStatistics)
+		worker.GET("/statistics", h.GetWorkerStatistics)
 	}
 
 	manager := api.Group("/manager")
@@ -131,7 +131,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			workers.POST("bonuses", h.AddBonus)
 			workers.GET("bonuses/:id", h.GetBonuses)
 
-			workers.GET("statistics/:id", h.GetStatistics)
+			workers.GET("statistics/:id", h.GetStatistics) // Изменено на /api/manager/workers/statistics/:id
 
 		}
 		services := manager.Group("/services")
@@ -432,14 +432,89 @@ func (h *Handler) DeleteOrder(c *gin.Context) {
 
 func (h *Handler) GetOrderStatistics(c *gin.Context) {
 	logger.Debug("Получен запрос на получение статистики")
-	var stats models.Statistics
-	//stats, err := h.services.Order.GetStatistics()
-	//if err != nil {
-	//	logger.Error("Ошибка при получении статистики: %v", err)
-	//	c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
-	//	return
-	//}
-	//logger.Debug("Статистика успешно получена")
+	stats, err := h.services.Order.GetStatistics()
+	if err != nil {
+		logger.Error("Ошибка при получении статистики: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	logger.Debug("Статистика успешно получена")
+	c.JSON(http.StatusOK, stats)
+}
+
+func (h *Handler) GetWorkerStatistics(c *gin.Context) {
+	userId, _ := c.Get("userId")
+	logger.Debug("Получен запрос на получение статистики работника user_id:%v", userId)
+
+	// Получаем worker_id из user_id
+	worker, err := h.services.Worker.GetByUserId(userId.(int))
+	if err != nil {
+		logger.Error("Ошибка при получении данных работника: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "ошибка при получении данных работника"})
+		return
+	}
+
+	// Получаем статистику за сегодня
+	today := time.Now().Truncate(24 * time.Hour)
+	tomorrow := today.Add(24 * time.Hour)
+
+	// Получаем статистику за месяц
+	monthStart := time.Date(today.Year(), today.Month(), 1, 0, 0, 0, 0, today.Location())
+
+	// Получаем заказы за сегодня
+	todayOrders, err := h.services.Order.GetByWorkerIdAndDateRange(worker.ID, today, tomorrow)
+	if err != nil {
+		logger.Error("Ошибка при получении заказов за сегодня: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Получаем заказы за месяц
+	monthOrders, err := h.services.Order.GetByWorkerIdAndDateRange(worker.ID, monthStart, tomorrow)
+	if err != nil {
+		logger.Error("Ошибка при получении заказов за месяц: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Получаем все заказы работника
+	allOrders, err := h.services.Order.GetByWorkerId(worker.ID)
+	if err != nil {
+		logger.Error("Ошибка при получении всех заказов: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	// Подсчитываем статистику
+	var totalRevenueToday, totalRevenueMonth, totalRevenue float64
+	var lastOrderTime string
+
+	for _, order := range todayOrders {
+		totalRevenueToday += order.TotalAmount
+	}
+
+	for _, order := range monthOrders {
+		totalRevenueMonth += order.TotalAmount
+	}
+
+	for _, order := range allOrders {
+		totalRevenue += order.TotalAmount
+		if lastOrderTime == "" || order.CreatedAt.After(time.Now().Add(-24*365*time.Hour)) {
+			lastOrderTime = order.CreatedAt.Format(time.RFC3339)
+		}
+	}
+
+	stats := map[string]interface{}{
+		"total_orders":        len(allOrders),
+		"total_orders_today":  len(todayOrders),
+		"total_orders_month":  len(monthOrders),
+		"total_revenue":       totalRevenue,
+		"total_revenue_today": totalRevenueToday,
+		"total_revenue_month": totalRevenueMonth,
+		"last_order":          lastOrderTime,
+	}
+
+	logger.Debug("Успешно получена статистика для работника ID:%v", worker.ID)
 	c.JSON(http.StatusOK, stats)
 }
 

@@ -17,7 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { useToast } from "@/hooks/use-toast"
-import { clientsApi, contractsApi, Contract } from "@/lib/api"
+import { clientsApi, contractsApi, Contract, clientTypesApi } from "@/lib/api"
 
 interface ClientFormDialogProps {
   open: boolean
@@ -33,12 +33,11 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
     manager_phone: "",
     client_type: "",
     contract_id: "",
-    new_client_type: "",
   })
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [clientTypes, setClientTypes] = useState<string[]>([])
   const [contracts, setContracts] = useState<Contract[]>([])
-  const [isNewType, setIsNewType] = useState(false)
+  const [isNewType] = useState(false)
   const { toast } = useToast()
 
   useEffect(() => {
@@ -58,9 +57,7 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
               manager_phone: client.manager_phone,
               client_type: client.client_type,
               contract_id: client.contract_id?.toString() || "",
-              new_client_type: "",
             })
-            setIsNewType(!types.includes(client.client_type))
         } else {
           // Сбрасываем форму для создания нового клиента
           setFormData({
@@ -69,9 +66,7 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
             manager_phone: "",
             client_type: "",
             contract_id: "",
-            new_client_type: "",
           })
-          setIsNewType(false)
         }
         })
     }
@@ -85,15 +80,7 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
   const handleSelectChange = (name: string, value: string) =>
     setFormData(prev => ({ ...prev, [name]: value }))
 
-  const handleTypeChange = (value: string) => {
-    if (value === "new") {
-      setIsNewType(true)
-      setFormData(prev => ({ ...prev, client_type: "", new_client_type: "" }))
-    } else {
-      setIsNewType(false)
-      setFormData(prev => ({ ...prev, client_type: value, new_client_type: "" }))
-    }
-  }
+  const handleTypeChange = (value: string) => setFormData(prev => ({ ...prev, client_type: value }))
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -110,21 +97,15 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
       if (!formData.manager_phone.trim()) {
         throw new Error("Телефон менеджера обязателен")
       }
-      if (!isNewType && !formData.client_type) {
+      if (!formData.client_type) {
         throw new Error("Тип клиента обязателен")
-      }
-      if (isNewType && !formData.new_client_type.trim()) {
-        throw new Error("Новый тип клиента обязателен")
-      }
-      if (!formData.contract_id) {
-        throw new Error("Договор обязателен")
       }
 
       const clientData = {
         name: formData.name,
         owner_phone: formData.owner_phone,
         manager_phone: formData.manager_phone,
-        client_type: isNewType ? formData.new_client_type : formData.client_type,
+        client_type: formData.client_type,
         contract_id: parseInt(formData.contract_id),
       }
 
@@ -185,7 +166,7 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
           <div className="space-y-2">
             <Label>Тип клиента</Label>
             <Select
-              value={isNewType ? "new" : formData.client_type}
+              value={formData.client_type}
               onValueChange={handleTypeChange}
             >
               <SelectTrigger>
@@ -197,24 +178,11 @@ export function ClientFormDialog({ open, onOpenChange, client, onSuccess }: Clie
                     {type}
                   </SelectItem>
                 ))}
-                <SelectItem value="new">+ Добавить новый тип</SelectItem>
               </SelectContent>
             </Select>
           </div>
 
-          {isNewType && (
-            <div className="space-y-2">
-              <Label htmlFor="new_client_type">Новый тип клиента</Label>
-              <Input
-                id="new_client_type"
-                name="new_client_type"
-                value={formData.new_client_type}
-                onChange={handleChange}
-                placeholder="Введите новый тип клиента"
-                required
-              />
-            </div>
-          )}
+          {/* Удалено добавление нового типа клиента */}
 
           <div className="space-y-2">
             <Label>Договор</Label>
