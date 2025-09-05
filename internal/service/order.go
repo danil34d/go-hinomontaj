@@ -56,3 +56,7 @@ func (s *OrderServiceImpl) Delete(id int) error {
 func (s *OrderServiceImpl) GetStatistics() (models.Statistics, error) {
 	return s.repo.GetOrderStatistics()
 }
+
+func (s *OrderServiceImpl) GetOrderMaterials(orderID int) ([]models.OrderMaterial, error) {
+	return s.repo.GetOrderMaterials(orderID)
+}

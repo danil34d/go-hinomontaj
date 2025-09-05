@@ -20,7 +20,7 @@ type Config struct {
 func NewPostgresDB(cfg Config) (*sqlx.DB, error) {
 	logger.Info("Подключение к PostgreSQL на %s:%s...", cfg.Host, cfg.Port)
 
-	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
+	connStr := fmt.Sprintf("host=%s port=%s user=%s password=%s dbname=%s sslmode=%s client_encoding=UTF8",
 		cfg.Host, cfg.Port, cfg.Username, cfg.Password, cfg.DBName, cfg.SSLMode)
 
 	db, err := sqlx.Open("postgres", connStr)

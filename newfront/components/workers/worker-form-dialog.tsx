@@ -31,12 +31,21 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
     password: "",
   })
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target
+    let processedValue = type === 'number' ? Number(value) : value
+    
+    // Валидация для процентной схемы оплаты
+    if (name === 'tmp_salary' && formData.salary_mode === 'percentage') {
+      const numValue = Number(value)
+      if (numValue < 0) processedValue = 0
+      if (numValue > 100) processedValue = 100
+    }
+    
+    setFormData((prev) => ({ ...prev, [name]: processedValue }))
   }
 
-  const handleSelectChange = (name, value) => {
+  const handleSelectChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -54,9 +63,12 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
         throw new Error("Пароль должен содержать минимум 6 символов")
       }
 
-      console.log("Отправляемые данные сотрудника:", formData)
+      // Преобразуем tmp_salary в число перед отправкой
+      const createData = { ...formData, tmp_salary: Number(formData.tmp_salary) }
+      
+      console.log("Отправляемые данные сотрудника:", createData)
 
-      await workersApi.create(formData)
+      await workersApi.create(createData)
       toast({
         title: "Успешно",
         description: "Сотрудник успешно создан",
@@ -144,7 +156,7 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
               onValueChange={(value) => handleSelectChange("salary_schema", value)}
               required
             >
-              <SelectTrigger>
+              <SelectTrigger id="salary_schema">
                 <SelectValue placeholder="Выберите схему оплаты" />
               </SelectTrigger>
               <SelectContent>
@@ -195,7 +207,7 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
               onValueChange={(value) => handleSelectChange("role", value)}
               required
             >
-              <SelectTrigger>
+              <SelectTrigger id="role">
                 <SelectValue placeholder="Выберите роль" />
               </SelectTrigger>
               <SelectContent>
@@ -234,4 +246,4 @@ export function WorkerFormDialog({ open, onOpenChange, onSuccess }: WorkerFormDi
       </DialogContent>
     </Dialog>
   )
-} 
+}

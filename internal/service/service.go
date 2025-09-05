@@ -79,7 +79,7 @@ type Client interface {
 	UpdateOnlineDate(date models.OnlineDate) error
 }
 
-type Order interface {
+type OrderService interface {
 	Create(order models.Order) (int, error)
 	GetAll() ([]models.Order, error)
 	GetByWorkerId(workerId int) ([]models.Order, error)
@@ -88,6 +88,7 @@ type Order interface {
 	UpdateStatus(id int, status string) error
 	Delete(id int) error
 	GetStatistics() (models.Statistics, error)
+	GetOrderMaterials(orderID int) ([]models.OrderMaterial, error)
 }
 
 type Service interface {
@@ -179,6 +180,7 @@ type Repository interface {
 	UpdateOrderStatus(id int, status string) error
 	DeleteOrder(id int) error
 	GetOrderStatistics() (models.Statistics, error)
+	GetOrderMaterials(orderID int) ([]models.OrderMaterial, error)
 
 	// OnlineDate
 	OnlineDate(date *models.OnlineDate) error

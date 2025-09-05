@@ -29,7 +29,7 @@ type Config struct {
 
 // GetDSN возвращает строку подключения к базе данных
 func (c *Config) GetDSN() string {
-	return "postgres://" + c.DB.Username + ":" + c.DB.Password + "@" + c.DB.Host + ":" + c.DB.Port + "/" + c.DB.DBName + "?sslmode=" + c.DB.SSLMode
+	return "postgres://" + c.DB.Username + ":" + c.DB.Password + "@" + c.DB.Host + ":" + c.DB.Port + "/" + c.DB.DBName + "?sslmode=" + c.DB.SSLMode + "&client_encoding=UTF8"
 }
 
 // GetMigrationsPath возвращает абсолютный путь к директории с миграциями

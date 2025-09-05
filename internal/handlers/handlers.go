@@ -93,6 +93,7 @@ func (h *Handler) InitRoutes() *gin.Engine {
 			orders.PUT("/:id", h.UpdateOrder)
 			orders.PUT("/:id/status", h.UpdateOrderStatus)
 			orders.DELETE("/:id", h.DeleteOrder)
+			orders.GET("/:id/materials", h.GetOrderMaterials)
 		}
 		manager.GET("/statistics", h.GetOrderStatistics)
 
@@ -1736,4 +1737,24 @@ func (h *Handler) UploadContractPrices(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, response)
+}
+
+// GetOrderMaterials получает материалы для конкретного заказа
+func (h *Handler) GetOrderMaterials(c *gin.Context) {
+	orderIDStr := c.Param("id")
+	orderID, err := strconv.Atoi(orderIDStr)
+	if err != nil {
+		logger.Error("Ошибка преобразования ID заказа: %v", err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Неверный ID заказа"})
+		return
+	}
+
+	materials, err := h.services.Order.GetOrderMaterials(orderID)
+	if err != nil {
+		logger.Error("Ошибка получения материалов заказа: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Ошибка получения материалов заказа"})
+		return
+	}
+
+	c.JSON(http.StatusOK, materials)
 }

@@ -55,17 +55,18 @@ type Car struct {
 }
 
 type Order struct {
-	ID            int            `json:"id" db:"id"`
-	Status        string         `json:"status" db:"status"`
-	WorkerID      int            `json:"worker_id" db:"worker_id"`
-	ClientID      int            `json:"client_id" db:"client_id"`
-	Client        *Client        `json:"client" db:"-"`
-	VehicleNumber string         `json:"vehicle_number" db:"vehicle_number"`
-	PaymentMethod string         `json:"payment_method" db:"payment_method"`
-	TotalAmount   float64        `json:"total_amount" db:"total_amount"`
-	CreatedAt     time.Time      `json:"created_at" db:"created_at"`
-	UpdatedAt     time.Time      `json:"updated_at" db:"updated_at"`
-	Services      []OrderService `json:"services"`
+	ID            int             `json:"id" db:"id"`
+	Status        string          `json:"status" db:"status"`
+	WorkerID      int             `json:"worker_id" db:"worker_id"`
+	ClientID      int             `json:"client_id" db:"client_id"`
+	Client        *Client         `json:"client" db:"-"`
+	VehicleNumber string          `json:"vehicle_number" db:"vehicle_number"`
+	PaymentMethod string          `json:"payment_method" db:"payment_method"`
+	TotalAmount   float64         `json:"total_amount" db:"total_amount"`
+	CreatedAt     time.Time       `json:"created_at" db:"created_at"`
+	UpdatedAt     time.Time       `json:"updated_at" db:"updated_at"`
+	Services      []OrderService  `json:"services"`
+	Materials     []OrderMaterial `json:"materials" db:"-"`
 }
 
 // OrderStatus представляет статус заказа
@@ -151,7 +152,7 @@ type Worker struct {
 	Email        string    `json:"email" db:"email"`
 	Phone        string    `json:"phone" db:"phone"`
 	SalarySchema string    `json:"salary_schema" db:"salary_schema"`
-	Salary       int       `json:"salary" db:"salary"`
+	Salary       int       `json:"tmp_salary" db:"salary"`
 	HasCar       bool      `json:"has_car" db:"has_car"`
 	CreatedAt    time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at" db:"updated_at"`
@@ -209,4 +210,13 @@ type Material struct {
 	Storage   int       `json:"storage" db:"storage"`
 	CreatedAt time.Time `json:"created_at" db:"created_at"`
 	UpdatedAt time.Time `json:"updated_at" db:"updated_at"`
+}
+
+type OrderMaterial struct {
+	ID         int      `json:"id" db:"id"`
+	OrderID    int      `json:"order_id" db:"order_id"`
+	MaterialID int      `json:"material_id" db:"material_id"`
+	Quantity   int      `json:"quantity" db:"quantity"`
+	CreatedAt  time.Time `json:"created_at" db:"created_at"`
+	Material   *Material `json:"material" db:"-"`
 }

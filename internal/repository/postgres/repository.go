@@ -1124,6 +1124,53 @@ func (r *Repository) getOrderServices(orderId int) ([]models.OrderService, error
 	return services, nil
 }
 
+// GetOrderMaterials получает материалы для конкретного заказа
+func (r *Repository) GetOrderMaterials(orderID int) ([]models.OrderMaterial, error) {
+	var orderMaterials []models.OrderMaterial
+	query := `
+		SELECT om.id, om.order_id, om.material_id, om.quantity, om.created_at,
+			   m.id as "material.id", m.name as "material.name", m.type_ds as "material.type_ds", 
+			   m.storage as "material.storage", m.created_at as "material.created_at", 
+			   m.updated_at as "material.updated_at"
+		FROM order_materials om
+		JOIN materials m ON om.material_id = m.id
+		WHERE om.order_id = $1
+		ORDER BY om.created_at`
+
+	rows, err := r.db.Query(query, orderID)
+	if err != nil {
+		logger.Error("Ошибка при получении материалов заказа %d: %v", orderID, err)
+		return nil, fmt.Errorf("ошибка при получении материалов заказа: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var om models.OrderMaterial
+		var material models.Material
+		
+		err := rows.Scan(
+			&om.ID, &om.OrderID, &om.MaterialID, &om.Quantity, &om.CreatedAt,
+			&material.ID, &material.Name, &material.TypeDS, &material.Storage,
+			&material.CreatedAt, &material.UpdatedAt,
+		)
+		if err != nil {
+			logger.Error("Ошибка при сканировании материала заказа: %v", err)
+			return nil, fmt.Errorf("ошибка при сканировании материала заказа: %w", err)
+		}
+		
+		om.Material = &material
+		orderMaterials = append(orderMaterials, om)
+	}
+
+	if err = rows.Err(); err != nil {
+		logger.Error("Ошибка при итерации по материалам заказа: %v", err)
+		return nil, fmt.Errorf("ошибка при итерации по материалам заказа: %w", err)
+	}
+
+	logger.Debug("Получено материалов для заказа %d: %d", orderID, len(orderMaterials))
+	return orderMaterials, nil
+}
+
 func (r *Repository) GetClientTypes() ([]string, error) {
 	var types []string
 	query := `SELECT DISTINCT client_type FROM clients ORDER BY client_type`

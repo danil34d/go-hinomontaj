@@ -8,10 +8,11 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { useToast } from "@/components/ui/use-toast"
 import { ordersApi, clientsApi, Order, Client } from "@/lib/api"
-import { Plus, Search, Pencil, Trash2, Play, CheckCircle, Clock } from "lucide-react"
+import { Plus, Search, Pencil, Trash2, Play, CheckCircle, Clock, Package } from "lucide-react"
 import { formatDistanceToNow } from "date-fns"
 import { ru } from "date-fns/locale"
 import { OrderFormDialog } from "@/components/orders/order-form-dialog"
+import { OrderDetailsDialog } from "@/components/orders/order-details-dialog"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -39,6 +40,7 @@ export default function ManagerOrdersPage() {
   const [selectedOrder, setSelectedOrder] = useState<Order | null>(null)
   const [isDialogOpen, setIsDialogOpen] = useState(false)
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false)
+  const [isDetailsDialogOpen, setIsDetailsDialogOpen] = useState(false)
   const [activeTab, setActiveTab] = useState("all")
   const { toast } = useToast()
 
@@ -281,6 +283,17 @@ export default function ManagerOrdersPage() {
                     <Button
                       variant="ghost"
                       size="icon"
+                      onClick={() => {
+                        setSelectedOrder(order)
+                        setIsDetailsDialogOpen(true)
+                      }}
+                      title="Просмотр деталей"
+                    >
+                      <Package className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
                       onClick={() => handleEdit(order)}
                     >
                       <Pencil className="h-4 w-4" />
@@ -393,6 +406,12 @@ export default function ManagerOrdersPage() {
         onOpenChange={setIsDialogOpen}
         order={selectedOrder}
         onSuccess={fetchOrders}
+      />
+
+      <OrderDetailsDialog
+        open={isDetailsDialogOpen}
+        onOpenChange={setIsDetailsDialogOpen}
+        order={selectedOrder}
       />
 
       <AlertDialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>

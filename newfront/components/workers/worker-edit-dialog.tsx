@@ -7,12 +7,12 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useToast } from "@/components/ui/use-toast"
-import { workersApi } from "@/lib/api"
+import { workersApi, Worker } from "@/lib/api"
 
 interface WorkerEditDialogProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  worker: any
+  worker: Worker
   onSuccess: () => void
 }
 
@@ -46,12 +46,21 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
     }
   }, [worker])
 
-  const handleChange = (e) => {
-    const { name, value } = e.target
-    setFormData((prev) => ({ ...prev, [name]: value }))
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value, type } = e.target
+    let processedValue = type === 'number' ? Number(value) : value
+    
+    // Валидация для процентной схемы оплаты
+    if (name === 'tmp_salary' && formData.salary_mode === 'percentage') {
+      const numValue = Number(value)
+      if (numValue < 0) processedValue = 0
+      if (numValue > 100) processedValue = 100
+    }
+    
+    setFormData((prev) => ({ ...prev, [name]: processedValue }))
   }
 
-  const handleSelectChange = (name, value) => {
+  const handleSelectChange = (name: string, value: string) => {
     setFormData((prev) => ({ ...prev, [name]: value }))
   }
 
@@ -70,6 +79,9 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
       if (!updateData.password) {
         delete updateData.password
       }
+
+      // Преобразуем tmp_salary в число перед отправкой
+      updateData.tmp_salary = Number(updateData.tmp_salary)
 
       await workersApi.update(worker.id, updateData)
       toast({
@@ -159,7 +171,7 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
               onValueChange={(value) => handleSelectChange("salary_schema", value)}
               required
             >
-              <SelectTrigger>
+              <SelectTrigger id="salary_schema">
                 <SelectValue placeholder="Выберите схему оплаты" />
               </SelectTrigger>
               <SelectContent>
@@ -231,4 +243,4 @@ export function WorkerEditDialog({ open, onOpenChange, worker, onSuccess }: Work
       </DialogContent>
     </Dialog>
   )
-} 
+}
